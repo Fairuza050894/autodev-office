@@ -92,7 +92,7 @@ function Office({agents,tasks,events,onSelect,unityUrl}:{agents:Row[];tasks:Row[
  const [focus3d,setFocus3d]=useState(-1);
  const [reset3d,setReset3d]=useState(0);
  const [spin,setSpin]=useState(true);
- const [mode,setMode]=useState<'2d'|'3d'|'unity'>('2d');
+ const [mode,setMode]=useState<'2d'|'3d'|'unity'>('3d');
  const [url,setUrl]=useState<string|undefined>(unityUrl);
  const frame=useRef<HTMLIFrameElement|null>(null);
  useEffect(()=>{if(url)return;api('/settings').then(r=>setUrl(typeof r.unity_build_url==='string'?r.unity_build_url:undefined)).catch(()=>{});},[url]);
