@@ -2,7 +2,15 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { parseRow, type Row } from '@autodev/ui';
-import { agentDot, isBusyAgent, officeFloors, roomOfAgent } from './office-data';
+import { isBusyAgent, officeFloors, roomOfAgent } from './office-data';
+import { animFor, charEntry } from './character-manifest';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
 function textSprite(text: string, accent = '#a5b4fc', scale = 1): THREE.Sprite {
   const c = document.createElement('canvas');
@@ -175,198 +183,6 @@ function furnitureFor(room: string): THREE.Group {
   return g;
 }
 
-const SKIN = ['#edc8a5', '#c68e5e', '#8d5a2b'];
-const HAIR = ['#1c1917', '#3f2d20', '#6b4a2f', '#8a8f98'];
-// Geometri dipakai ulang semua agen — biaya render tetap, tanpa file eksternal
-const torsoGeo = new THREE.BoxGeometry(0.72, 0.75, 0.42);
-const pelvisGeo = new THREE.BoxGeometry(0.6, 0.32, 0.38);
-const beltGeo = new THREE.BoxGeometry(0.64, 0.1, 0.42);
-const padGeo = new THREE.SphereGeometry(0.17, 10, 10);
-const headGeo = new THREE.SphereGeometry(0.3, 18, 18);
-const hairGeo = new THREE.SphereGeometry(0.32, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.55);
-const upperArmGeo = new THREE.CapsuleGeometry(0.12, 0.34, 3, 8);
-const foreArmGeo = new THREE.CapsuleGeometry(0.1, 0.3, 3, 8);
-const handGeo = new THREE.SphereGeometry(0.11, 10, 10);
-const thighGeo = new THREE.BoxGeometry(0.22, 0.5, 0.26);
-const shinGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.45, 8);
-const shoeGeo = new THREE.BoxGeometry(0.24, 0.14, 0.4);
-const tieGeo = new THREE.BoxGeometry(0.14, 0.42, 0.06);
-const packGeo = new THREE.BoxGeometry(0.5, 0.6, 0.22);
-const SHARED_GEO: Set<THREE.BufferGeometry> = new Set<THREE.BufferGeometry>([torsoGeo, pelvisGeo, beltGeo, padGeo, headGeo, hairGeo, upperArmGeo, foreArmGeo, handGeo, thighGeo, shinGeo, shoeGeo, tieGeo, packGeo]);
-const eyeGeo = new THREE.SphereGeometry(0.035, 8, 8);
-const noseGeo = new THREE.SphereGeometry(0.03, 8, 8);
-const chestGeo = new THREE.BoxGeometry(0.5, 0.3, 0.05);
-const badgeGeo = new THREE.BoxGeometry(0.1, 0.12, 0.02);
-const buckleGeo = new THREE.BoxGeometry(0.12, 0.08, 0.03);
-const shadowGeo = new THREE.CircleGeometry(0.7, 20);
-const ringGeo = new THREE.TorusGeometry(0.85, 0.08, 8, 28);
-[eyeGeo, noseGeo, chestGeo, badgeGeo, buckleGeo, shadowGeo, ringGeo].forEach(x => SHARED_GEO.add(x));
-const beltMatS = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.5 });
-const chestMatS = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.6 });
-const bodyMatCache = new Map<string, THREE.MeshStandardMaterial>();
-function bodyMat(color: string): THREE.MeshStandardMaterial {
-  let m = bodyMatCache.get(color);
-  if (!m) { m = new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05 }); bodyMatCache.set(color, m); }
-  return m;
-}
-const skinMatCache = new Map<string, THREE.MeshStandardMaterial>();
-function skinMat(color: string): THREE.MeshStandardMaterial {
-  let m = skinMatCache.get(color);
-  if (!m) { m = new THREE.MeshStandardMaterial({ color, roughness: 0.6 }); skinMatCache.set(color, m); }
-  return m;
-}
-const darkMat = new THREE.MeshStandardMaterial({ color: '#232c52', roughness: 0.7 });
-const shoeMat = new THREE.MeshStandardMaterial({ color: '#141a33', roughness: 0.5 });
-const glassMat = new THREE.MeshStandardMaterial({ color: 0x0b1020, roughness: 0.2, metalness: 0.6 });
-
-// Kunci peran dari id / nama / role agen
-function roleOf(a: Row): string {
-  const r = a as Record<string, unknown>;
-  return `${String(r.id ?? '')} ${String(r.display_name ?? r.name ?? '')} ${String(r.role ?? '')}`.toLowerCase();
-}
-
-// Aksesoris pembeda siluet per peran: helm, topi, headset, kacamata, dasi, ransel
-function addGear(g: THREE.Group, role: string, uniform: THREE.Material, skin: THREE.Material): void {
-  const pick = (re: RegExp) => re.test(role);
-  const visorGlow = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.1, 0.06), new THREE.MeshBasicMaterial({ color: 0x22d3ee }));
-  if (pick(/secur/)) {
-    // Helm pengaman + visor gelap + bahu lebar
-    const helm = new THREE.Mesh(new THREE.SphereGeometry(0.36, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), new THREE.MeshStandardMaterial({ color: '#0f2a4a', roughness: 0.35, metalness: 0.3 }));
-    helm.position.y = 2.46; helm.castShadow = true; g.add(helm);
-    const v = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.14, 0.08), glassMat);
-    v.position.set(0, 2.42, 0.26); g.add(v);
-    return;
-  }
-  if (pick(/devops|release|qa|architect/)) {
-    // Topi proyek kuning + lampu depan
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.2, 14), new THREE.MeshStandardMaterial({ color: '#f59e0b', roughness: 0.5 }));
-    cap.position.y = 2.62; cap.castShadow = true; g.add(cap);
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 14), new THREE.MeshStandardMaterial({ color: '#d97706', roughness: 0.5 }));
-    brim.position.y = 2.52; g.add(brim);
-    const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfff6c9 }));
-    lamp.position.set(0, 2.6, 0.32); g.add(lamp);
-    return;
-  }
-  if (pick(/pm|manager|lead|po\b|_po|product|ba\b|_ba|account/)) {
-    // Topi datar + dasi + papan kerja di tangan kiri
-    const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.12, 14), new THREE.MeshStandardMaterial({ color: '#3b2f2f', roughness: 0.7 }));
-    hat.position.y = 2.66; hat.castShadow = true; g.add(hat);
-    const tie = new THREE.Mesh(tieGeo, new THREE.MeshStandardMaterial({ color: '#b91c1c', roughness: 0.6 }));
-    tie.position.set(0, 1.72, 0.24); g.add(tie);
-    visorGlow.position.set(0, 2.4, 0.27); g.add(visorGlow);
-    return;
-  }
-  if (pick(/design|writer|content|brand/)) {
-    // Baret seniman + kacamata bulat
-    const beret = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.12, 14), new THREE.MeshStandardMaterial({ color: '#7c3aed', roughness: 0.7 }));
-    beret.position.set(0.06, 2.68, 0); beret.rotation.z = -0.18; beret.castShadow = true; g.add(beret);
-    for (const sx of [-0.13, 0.13]) {
-      const lens = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.02, 6, 14), glassMat);
-      lens.position.set(sx, 2.42, 0.27); g.add(lens);
-    }
-    return;
-  }
-  if (pick(/data|analy|research/)) {
-    // Kacamata kerja + ransel laptop
-    for (const sx of [-0.13, 0.13]) {
-      const lens = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.04), glassMat);
-      lens.position.set(sx, 2.42, 0.27); g.add(lens);
-    }
-    const pack = new THREE.Mesh(packGeo, new THREE.MeshStandardMaterial({ color: '#334155', roughness: 0.8 }));
-    pack.position.set(0, 1.65, -0.34); pack.castShadow = true; g.add(pack);
-    return;
-  }
-  // Default engineer/CS: headset + mic + ransel
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.045, 8, 18, Math.PI), new THREE.MeshStandardMaterial({ color: '#1e2438', roughness: 0.5 }));
-  band.position.y = 2.44; band.rotation.z = 0; g.add(band);
-  for (const sx of [-0.31, 0.31]) {
-    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.08, 10), new THREE.MeshStandardMaterial({ color: '#22d3ee', roughness: 0.5 }));
-    pad.rotation.z = Math.PI / 2; pad.position.set(sx, 2.4, 0); g.add(pad);
-  }
-  const mic = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.3, 6), new THREE.MeshStandardMaterial({ color: '#1e2438', roughness: 0.5 }));
-  mic.position.set(0.28, 2.28, 0.18); mic.rotation.set(0.5, 0, 0.5); g.add(mic);
-  const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), new THREE.MeshBasicMaterial({ color: 0x22c55e }));
-  dot.position.set(0.2, 2.22, 0.28); g.add(dot);
-  void uniform; void skin;
-}
-
-interface Walker { g: THREE.Group; base: THREE.Vector3; phase: number; speed: number; busy: boolean; body: THREE.Mesh; head: THREE.Mesh; armL: THREE.Group; armR: THREE.Group; foreL: THREE.Group; foreR: THREE.Group; legL: THREE.Group; legR: THREE.Group; ring?: THREE.Mesh; name: string }
-
-function limb(side: -1 | 1, upper: THREE.BufferGeometry, lower: THREE.BufferGeometry, handR: number, matU: THREE.Material, matS: THREE.Material, shoulderY: number, spread: number): { top: THREE.Group; fore: THREE.Group } {
-  // Pivot di bahu/pinggul — putaran ayun terlihat natural
-  const top = new THREE.Group();
-  top.position.set(side * spread, shoulderY, 0);
-  const u = new THREE.Mesh(upper, matU); u.position.y = -0.22; u.castShadow = true; top.add(u);
-  const pad = new THREE.Mesh(padGeo, matU); pad.position.y = 0.02; pad.castShadow = true; top.add(pad);
-  const fore = new THREE.Group(); fore.position.y = -0.44; top.add(fore);
-  const f = new THREE.Mesh(lower, matU); f.position.y = -0.18; f.castShadow = true; fore.add(f);
-  const hand = new THREE.Mesh(handGeo, matS); hand.position.y = -0.4; hand.scale.setScalar(handR); hand.castShadow = true; fore.add(hand);
-  return { top, fore };
-}
-
-function leg(side: -1 | 1, matP: THREE.Material, spread: number, hipY: number): THREE.Group {
-  const top = new THREE.Group();
-  top.position.set(side * spread, hipY, 0);
-  const th = new THREE.Mesh(thighGeo, matP); th.position.y = -0.25; th.castShadow = true; top.add(th);
-  const sh = new THREE.Mesh(shinGeo, darkMat); sh.position.y = -0.68; sh.castShadow = true; top.add(sh);
-  const shoe = new THREE.Mesh(shoeGeo, shoeMat); shoe.position.set(0, -0.95, 0.06); shoe.castShadow = true; top.add(shoe);
-  return top;
-}
-
-function makeAgent(a: Row, ai: number): { g: Walker; pick: THREE.Object3D[] } {
-  const color = agentDot(a);
-  const busy = isBusyAgent(a);
-  const uniform = bodyMat(color);
-  const skin = skinMat(SKIN[ai % SKIN.length]);
-  const hairM = new THREE.MeshStandardMaterial({ color: HAIR[ai % HAIR.length], roughness: 0.85 });
-  const g = new THREE.Group();
-  g.userData.agent = a;
-  // Pinggul + sabuk + torso + pelindung dada
-  const pelvis = new THREE.Mesh(pelvisGeo, darkMat); pelvis.position.y = 1.08; pelvis.castShadow = true; g.add(pelvis);
-  const belt = new THREE.Mesh(beltGeo, beltMatS); belt.position.y = 1.26; g.add(belt);
-  const buckle = new THREE.Mesh(buckleGeo, new THREE.MeshBasicMaterial({ color: busy ? 0x22d3ee : 0x64748b }));
-  buckle.position.set(0, 1.26, 0.22); g.add(buckle);
-  const body = new THREE.Mesh(torsoGeo, uniform);
-  body.position.y = 1.68; body.castShadow = true; body.userData.agent = a;
-  g.add(body);
-  const chest = new THREE.Mesh(chestGeo, chestMatS);
-  chest.position.set(0, 1.72, 0.22); g.add(chest);
-  const badge = new THREE.Mesh(badgeGeo, new THREE.MeshBasicMaterial({ color: busy ? 0x22c55e : 0x64748b }));
-  badge.position.set(0.18, 1.78, 0.25); g.add(badge);
-  // Kepala + rambut + wajah
-  const head = new THREE.Mesh(headGeo, skin);
-  head.position.y = 2.36; head.castShadow = true; head.userData.agent = a;
-  g.add(head);
-  const hair = new THREE.Mesh(hairGeo, hairM); hair.position.y = 2.42; hair.castShadow = true; g.add(hair);
-  for (const sx of [-0.11, 0.11]) {
-    const eye = new THREE.Mesh(eyeGeo, glassMat);
-    eye.position.set(sx, 2.38, 0.27); g.add(eye);
-  }
-  const nose = new THREE.Mesh(noseGeo, skin); nose.position.set(0, 2.33, 0.29); g.add(nose);
-  // Lengan 2 segmen + kaki lengkap
-  const L = limb(-1, upperArmGeo, foreArmGeo, 1, uniform, skin, 1.92, 0.48);
-  const R = limb(1, upperArmGeo, foreArmGeo, 1, uniform, skin, 1.92, 0.48);
-  g.add(L.top, R.top);
-  const legL = leg(-1, uniform, 0.17, 0.95);
-  const legR = leg(1, uniform, 0.17, 0.95);
-  g.add(legL, legR);
-  addGear(g, roleOf(a), uniform, skin);
-  let ring: THREE.Mesh | undefined;
-  if (busy) {
-    ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.9 }));
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.08;
-    g.add(ring);
-  }
-  const label = textSprite(String((a as Record<string, unknown>).name ?? (a as Record<string, unknown>).id ?? `agen-${ai}`).slice(0, 14), color, 0.45);
-  label.position.y = 3.15;
-  g.add(label);
-  const shadow = new THREE.Mesh(shadowGeo, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 }));
-  shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.02; g.add(shadow);
-  const w: Walker = { g, base: new THREE.Vector3(), phase: ai * 1.7, speed: busy ? 2.6 : 1.4, busy, body, head, armL: L.top, armR: R.top, foreL: L.fore, foreR: R.fore, legL, legR, ring, name: '' };
-  return { g: w, pick: [body, head] };
-}
-
 export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, resetToken = 0, spin = true }: { agents: Row[]; tasks: Row[]; onSelect: (r: Row) => void; focusFloor?: number; resetToken?: number; spin?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const select = useRef(onSelect);
@@ -395,14 +211,19 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.12;
+    renderer.toneMappingExposure = 1.0;
     el.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
     scene.fog = new THREE.Fog(0x0b1020, 95, 230);
     const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 600);
 
-    scene.add(new THREE.HemisphereLight(0xcdd8ff, 0x1a2040, 1.0));
+    scene.add(new THREE.HemisphereLight(0xcdd8ff, 0x1a2040, 0.85));
+    try {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.06).texture;
+      pmrem.dispose();
+    } catch { /* tanpa HDRI bila gagal */ }
     const sun = new THREE.DirectionalLight(0xffffff, 1.7);
     sun.position.set(30, 58, 25);
     sun.castShadow = true;
@@ -440,7 +261,8 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
     scene.add(building);
     const floorGroups: THREE.Group[] = [];
     const blinkers: THREE.Object3D[] = [];
-    const walkers: Walker[] = [];
+    interface Rig { g: THREE.Group; base: THREE.Vector3; phase: number; mixer: THREE.AnimationMixer; clips: Map<string, THREE.AnimationClip>; cur: string; act: THREE.AnimationAction | null; agent: Row; label: THREE.Sprite }
+    const rigs: Rig[] = [];
     const pickables: THREE.Object3D[] = [];
 
     const FW = 32, FD = 22, GAP = 10.5;
@@ -570,7 +392,9 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
     scene.add(dust);
 
     const detailOf = (a: Row) => parseRow({ ...a, current_task: a.current_task || state.current.tasks.find(t => t.id === a.current_task_id) });
-    state.current.agents.forEach((a, ai) => {
+    const glbLoader = new GLTFLoader();
+    // Placeholder: bayangan + label nama (bukan karakter) — diganti model .glb saat load selesai
+    const spawnPlaceholder = (a: Row, ai: number) => {
       let fi = 0, ri = 0, acc = 0;
       const gi = roomOfAgent(a, ai);
       for (let f = 0; f < officeFloors.length; f++) {
@@ -582,13 +406,40 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
       const cx = -FW / 2 + col * cw + cw / 2, cz = -FD / 2 + row * cd + cd / 2;
       const slot = ai % 4;
       const px = cx - 2.8 + (slot % 2) * 2.4, pz = cz - 2.2 + Math.floor(slot / 2) * 2.2;
-      const { g: w, pick } = makeAgent(a, ai);
-      w.base.set(px, fi * GAP + 0.62, pz);
-      w.g.position.copy(w.base);
-      w.g.rotation.y = (ai * 1.3) % (Math.PI * 2);
-      pick.forEach(p => { p.userData.pick = w.g; pickables.push(p); });
-      floorGroups[fi].add(w.g);
-      walkers.push(w);
+      const g = new THREE.Group();
+      g.userData.agent = a;
+      const label = textSprite(String((a as Record<string, unknown>).display_name ?? (a as Record<string, unknown>).name ?? (a as Record<string, unknown>).id ?? `agen-${ai}`).slice(0, 14), charEntry(a, ai).color, 0.45);
+      label.position.y = 3.15;
+      g.add(label);
+      const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.7, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 }));
+      shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.02; g.add(shadow);
+      g.position.set(px, fi * GAP + 0.62, pz);
+      g.rotation.y = (ai * 1.3) % (Math.PI * 2);
+      floorGroups[fi].add(g);
+      const rig: Rig = { g, base: g.position.clone(), phase: ai * 1.7, mixer: new THREE.AnimationMixer(g), clips: new Map(), cur: '', act: null, agent: a, label };
+      rigs.push(rig);
+      return rig;
+    };
+    const playClip = (rig: Rig, name: string) => {
+      if (rig.cur === name || !rig.clips.has(name)) return;
+      const next = rig.mixer.clipAction(rig.clips.get(name)!);
+      next.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.3).play();
+      rig.act?.fadeOut(0.3);
+      rig.act = next; rig.cur = name;
+    };
+    let cancelled = false;
+    state.current.agents.forEach((a, ai) => {
+      const rig = spawnPlaceholder(a, ai);
+      // Model rig dari file .glb — bukan primitif
+      glbLoader.loadAsync(charEntry(a, ai).file).then((gltf: { scene: THREE.Group; animations: THREE.AnimationClip[] }) => {
+        if (cancelled) return;
+        const model = SkeletonUtils.clone(gltf.scene);
+        model.traverse((o: THREE.Object3D) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.userData.agent = a; pickables.push(o); } });
+        model.userData.agent = a;
+        rig.g.add(model);
+        for (const c of gltf.animations) rig.clips.set(c.name, c);
+        playClip(rig, animFor(a));
+      }).catch(() => { /* placeholder bertahan bila file belum ada */ });
     });
 
     const HELI = { y: 11, r: 56, phi: 1.28, theta: 0.75 };
@@ -680,6 +531,19 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
       camera.updateProjectionMatrix();
     };
     resize();
+    const weak = small || (navigator.hardwareConcurrency ?? 8) <= 4 || reduced;
+    let composer: EffectComposer | null = null;
+    let bloom: UnrealBloomPass | null = null;
+    if (!weak) {
+      try {
+        composer = new EffectComposer(renderer);
+        composer.addPass(new RenderPass(scene, camera));
+        bloom = new UnrealBloomPass(new THREE.Vector2(el.clientWidth || 800, 400), 0.12, 0.4, 1.0);
+        composer.addPass(bloom);
+        composer.addPass(new OutputPass());
+      } catch { composer = null; }
+    }
+    const renderFrame = () => { if (composer) composer.render(); else renderer.render(scene, camera); };
     const ro = new ResizeObserver(resize);
     ro.observe(el);
 
@@ -709,23 +573,16 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
         applyCam();
       }
       if (auto) { theta += 0.0016; applyCam(); }
-      // Agen hidup: mondar-mandir kecil + ayun tangan/kaki + angguk
-      for (const w of walkers) {
+      // Agen GLB: AnimationMixer + klip sesuai status (crossfade 0.3s), gerak posisi kecil
+      const dt = Math.min(clock.getDelta(), 0.05);
+      for (const rig of rigs) {
+        rig.mixer.update(dt);
+        playClip(rig, animFor(rig.agent));
         const k = reduced ? 0 : 1;
-        const wx = Math.sin(t * 0.35 * w.speed + w.phase) * 1.1 * k;
-        const wz = Math.cos(t * 0.28 * w.speed + w.phase) * 0.9 * k;
-        w.g.position.set(w.base.x + wx, w.base.y + Math.abs(Math.sin(t * w.speed + w.phase)) * 0.12 * k, w.base.z + wz);
-        w.g.rotation.y += (Math.atan2(wx, wz) - w.g.rotation.y) * 0.02 * k + (auto ? 0.0004 : 0);
-        const sw = Math.sin(t * w.speed * 2 + w.phase) * (w.busy ? 0.55 : 0.3) * k;
-        w.armL.rotation.x = sw; w.armR.rotation.x = -sw;
-        w.legL.rotation.x = -sw * 0.8; w.legR.rotation.x = sw * 0.8;
-        w.head.position.y = 2.36 + Math.sin(t * 1.8 + w.phase) * 0.05 * k;
-        w.foreL.rotation.x = -0.35 + sw * 0.5; w.foreR.rotation.x = -0.35 - sw * 0.5;
-        if (w.ring) {
-          const s = 1 + Math.sin(t * 3 + w.phase) * 0.08;
-          w.ring.scale.set(s, s, 1);
-          (w.ring.material as THREE.MeshBasicMaterial).opacity = 0.65 + Math.sin(t * 3 + w.phase) * 0.25;
-        }
+        const wx = Math.sin(t * 0.35 + rig.phase) * 1.1 * k;
+        const wz = Math.cos(t * 0.28 + rig.phase) * 0.9 * k;
+        rig.g.position.set(rig.base.x + wx, rig.base.y, rig.base.z + wz);
+        rig.g.rotation.y += (Math.atan2(wx, wz) - rig.g.rotation.y) * 0.02 * k + (auto ? 0.0004 : 0);
       }
       blinkers.forEach((b, i) => { (b as THREE.Mesh).visible = Math.sin(t * 3 + i * 1.3) > -0.2; });
       // Debu naik perlahan
@@ -737,27 +594,28 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
         pos.setX(i, pos.getX(i) + Math.sin(t * 0.6 + dustSeed[i]) * 0.004);
       }
       pos.needsUpdate = true;
-      renderer.render(scene, camera);
+      renderFrame();
       raf = requestAnimationFrame(tick);
     };
     tick();
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
+      for (const rig of rigs) { rig.act?.stop(); rig.mixer.stopAllAction(); rig.mixer.uncacheRoot(rig.g); }
       dom.removeEventListener('pointerdown', down);
       dom.removeEventListener('pointermove', move);
       dom.removeEventListener('pointerup', up);
       dom.removeEventListener('wheel', wheel);
       scene.traverse(o => {
         const m = o as THREE.Mesh;
-        if (m.geometry && !SHARED_GEO.has(m.geometry as typeof torsoGeo)) (m.geometry as THREE.BufferGeometry).dispose();
+        if (m.geometry) (m.geometry as THREE.BufferGeometry).dispose();
         const material = m.material as THREE.Material | THREE.Material[] | undefined;
         const mats = material ? (Array.isArray(material) ? material : [material]) : [];
         mats.forEach(x => { const s = x as THREE.SpriteMaterial; s.map?.dispose(); x.dispose(); });
       });
-      bodyMatCache.clear();
-      skinMatCache.clear();
+      composer?.dispose();
       renderer.dispose();
       el.removeChild(dom);
     };

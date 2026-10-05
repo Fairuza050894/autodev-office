@@ -13,6 +13,7 @@
     "incremental": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    
     "jsx": "preserve",
     "resolveJsonModule": true,
     "plugins": [
