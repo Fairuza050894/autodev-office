@@ -1,0 +1,87 @@
+{
+  "type": "object",
+  "required": [
+    "status",
+    "summary"
+  ],
+  "properties": {
+    "status": {
+      "enum": [
+        "DONE",
+        "BLOCKED",
+        "REJECTED"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "data": {
+      "type": "object"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "content"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "input"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "input": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

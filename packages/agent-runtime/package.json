@@ -1,0 +1,1 @@
+{"name":"@autodev/agent-runtime","version":"1.0.0","type":"module","exports":"./src/index.ts","dependencies":{"@autodev/shared":"workspace:*","@autodev/agents":"workspace:*","@autodev/tools":"workspace:*","zod":"^3.24.2"}}

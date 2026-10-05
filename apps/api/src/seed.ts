@@ -1,0 +1,10 @@
+import { randomUUID } from 'node:crypto';
+import { AGENTS } from '@autodev/agents';
+import { pool,store } from './store.js';
+import { passwordHash } from './security.js';
+const email=process.env.ADMIN_EMAIL??'admin@autodev.local',password=process.env.ADMIN_PASSWORD??'AutoDevLocal2026!';
+await pool.query("INSERT INTO users(id,email,name,role,password_hash) VALUES($1,$2,'Administrator','Admin',$3) ON CONFLICT(email) DO NOTHING",[randomUUID(),email,passwordHash(password)]);
+for(const agent of AGENTS)if(!await store.getRecord('agents',agent.id))await store.putRecord('agents',{...agent,status:'idle'});
+await pool.query("INSERT INTO settings(id,data) VALUES('global',$1) ON CONFLICT(id) DO NOTHING",[JSON.stringify({default_autonomy_mode:'FULL_AUTO',budget_cap_usd:25,llm_mode:process.env.LLM_MODE??'mock',deploy_target:'docker',brand:{name:'AutoDev Office'},models:{},retry_policy:{max_attempts:3,max_qa_cycles:3},smtp:{host:process.env.SMTP_HOST??'mailpit',port:Number(process.env.SMTP_PORT??1025)},email_templates:{}})]);
+if(!await store.getRecord('projects','demo-klinik'))await store.putRecord('projects',{id:'demo-klinik',title:'Demo Klinik Gigi',client_email:'demo@autodev.local',brief_json:{goal:'Website company profile klinik gigi',features:['Profil klinik','Layanan','Kontak'],email:'demo@autodev.local',locale:'id'},status:'INTAKE',stage:'INTAKE',autonomy_mode:'FULL_AUTO',priority:50,budget_cap_usd:25,cost_usd:0,tokens_total:0,version:'0.1.0',created_at:new Date().toISOString(),started_at:new Date().toISOString()});
+await pool.end();

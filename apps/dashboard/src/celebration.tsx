@@ -1,0 +1,3 @@
+'use client';
+import { motion, useReducedMotion } from 'framer-motion';
+export default function Celebration() { const reduced=useReducedMotion();if(reduced)return null;return <div aria-hidden="true" style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:80,overflow:'hidden'}}>{Array.from({length:32},(_,index)=><motion.i key={index} initial={{x:`${(index*37)%100}vw`,y:-20,rotate:0,opacity:1}} animate={{y:'100vh',rotate:360+(index%4)*90,opacity:0}} transition={{duration:2+(index%5)*.25,delay:(index%8)*.08}} style={{position:'absolute',width:6,height:12,background:['#6366f1','#22d3ee','#22c55e','#a78bfa'][index%4],borderRadius:2}}/>)}</div>; }

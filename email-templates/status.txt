@@ -1,0 +1,5 @@
+Halo {{client_name}},
+Project {{title}}: {{status}}
+Alasan: {{reason}}
+Detail dan artefak: {{portal_url}}
+Tidak ada keberhasilan yang diklaim tanpa bukti terukur.

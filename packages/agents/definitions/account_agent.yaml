@@ -1,0 +1,19 @@
+id: account_agent
+display_name: "Tara — Account Manager"
+role: account
+avatar: /avatars/agent-19.svg
+model:
+  provider: openai
+  name: gpt-4o-mini
+  temperature: 0.2
+  max_output_tokens: 16000
+budget:
+  max_tokens_per_task: 120000
+  max_cost_usd_per_task: 2
+  max_retries: 3
+  timeout_seconds: 900
+tools: ["email.send","doc.write"]
+system_prompt_file: prompts/account_agent.txt
+output_schema: schemas/result.json
+definition_of_done: [JSON tervalidasi, Artefak tersimpan, Tidak mengarang hasil tool, Tidak membocorkan secret]
+handoff_to: [pm_agent]

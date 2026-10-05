@@ -1,0 +1,9 @@
+import React from 'react';
+export { parseRow } from './data';
+export type { Row } from './data';
+export function Badge({value}:{value: unknown}) { const text=String(value ?? '—'); return <span className={`badge status-${text.toLowerCase()}`}>{text.replaceAll('_',' ')}</span>; }
+export function Empty({text='Belum ada data. Aktivitas akan muncul saat proyek berjalan.'}:{text?:string}) { return <div className="empty"><svg viewBox="0 0 120 80" width="120" aria-hidden="true"><path d="M15 60 35 20h50l20 40-45 15Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M35 20 60 45l25-25M15 60l45-15 45 15" fill="none" stroke="currentColor" strokeWidth="2"/></svg><p>{text}</p></div>; }
+export function Avatar({name,id,size=40}:{name:string;id:string;size?:number}) { const hue=Array.from(id).reduce((a,c)=>a+c.charCodeAt(0),0)%360; return <svg width={size} height={size} viewBox="0 0 48 48" role="img" aria-label={name}><rect width="48" height="48" rx="16" fill={`hsl(${hue} 45% 30%)`}/><path d="M8 48v-8c0-15 32-15 32 0v8" fill={`hsl(${hue} 65% 62%)`}/><ellipse cx="24" cy="22" rx="11" ry="13" fill="#edc8a5"/><path d="M12 20C8 2 39 3 36 21l-5-9-16 8Z" fill="#17223b"/><circle cx="20" cy="22" r="1.3" fill="#17223b"/><circle cx="28" cy="22" r="1.3" fill="#17223b"/><path d="M21 29q3 3 6 0" fill="none" stroke="#9b534e" strokeWidth="1.5"/></svg>; }
+export function money(value:unknown) { return new Intl.NumberFormat('id-ID',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(Number(value)||0); }
+export function date(value:unknown) { if(!value)return '—';const timestamp=new Date(typeof value==='number'?value:String(value));return Number.isNaN(timestamp.getTime())?'—':timestamp.toLocaleString('id-ID'); }
+export function safeUrl(value:unknown) { if(typeof value!=='string')return undefined; try { const url=new URL(value, 'http://localhost'); return ['http:','https:'].includes(url.protocol)?value:undefined; } catch{return undefined;} }

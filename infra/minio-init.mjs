@@ -1,0 +1,12 @@
+import { createHash, createHmac } from 'node:crypto';
+const hash = value => createHash('sha256').update(value).digest('hex');
+const hmac = (key, value) => createHmac('sha256', key).update(value).digest();
+const date = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
+const day = date.slice(0, 8), scope = `${day}/us-east-1/s3/aws4_request`;
+const host = 'minio:9000', path = '/autodev-artifacts', payload = hash('');
+const canonical = `PUT\n${path}\n\nhost:${host}\nx-amz-content-sha256:${payload}\nx-amz-date:${date}\n\nhost;x-amz-content-sha256;x-amz-date\n${payload}`;
+const signingKey = hmac(hmac(hmac(hmac(`AWS4${process.env.MINIO_ROOT_PASSWORD}`, day), 'us-east-1'), 's3'), 'aws4_request');
+const signature = createHmac('sha256', signingKey).update(`AWS4-HMAC-SHA256\n${date}\n${scope}\n${hash(canonical)}`).digest('hex');
+const response = await fetch(`http://${host}${path}`, { method: 'PUT', headers: { 'x-amz-date': date, 'x-amz-content-sha256': payload, authorization: `AWS4-HMAC-SHA256 Credential=${process.env.MINIO_ROOT_USER}/${scope}, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=${signature}` } });
+if (!response.ok && !(response.status === 409 && (await response.text()).includes('BucketAlreadyOwnedByYou'))) throw new Error(`Bucket bootstrap failed ${response.status}`);
+console.log('Private artifact bucket ready');

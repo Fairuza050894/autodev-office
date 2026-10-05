@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+exec docker compose run --rm --no-deps init pnpm --filter @autodev/api seed "$@"

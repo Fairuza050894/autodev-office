@@ -1,0 +1,3 @@
+import { describe,it,expect } from 'vitest';
+import { projectReportPdf } from './report.js';
+describe('project audit PDF',()=>{it('writes escaped text and multiple pages with valid offsets',()=>{const pdf=projectReportPdf('Project (audit)',Array.from({length:100},(_,i)=>`Event ${i}: measured result`));const text=pdf.toString();expect(text.startsWith('%PDF-1.4')).toBe(true);expect(text).toContain('/Count 3');expect(text).toContain('Project \\(audit\\)');const offset=Number(text.match(/startxref\n(\d+)/)?.[1]);expect(text.slice(offset,offset+4)).toBe('xref');expect(text.endsWith('%%EOF\n')).toBe(true);});});

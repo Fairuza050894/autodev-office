@@ -1,0 +1,1 @@
+{"name":"@autodev/agents","version":"1.0.0","type":"module","exports":"./src/index.ts","dependencies":{"@autodev/shared":"workspace:*","yaml":"^2.7.0","zod":"^3.24.2"}}

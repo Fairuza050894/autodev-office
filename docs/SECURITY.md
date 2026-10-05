@@ -1,0 +1,13 @@
+# Keamanan dan batas produksi
+
+Stack default hanya lokal. ADMIN_PASSWORD, GITEA_PASSWORD, database password, MinIO secret, SESSION_SECRET, RUNNER_TOKEN pada contoh bukan secret aman. Ganti dengan random credential unik melalui secret manager, batasi akses file/volume, jangan commit .env. SETTINGS_KEY mengenkripsi konfigurasi sensitif jika digunakan API; kehilangan key dapat membuat secret tersimpan tidak terbaca. Backup key secara terpisah dari DB.
+
+Auth/RBAC dan validasi API bukan pengganti audit. Operator harus memakai HTTPS, secure cookies, CORS allowlist, rate-limit dan CSRF sesuai deployment. Endpoint artifact harus memverifikasi session/portal token yang belum expired serta containment realpath, tidak memberikan file atas path klien arbitrer. MinIO bucket private. Data klien dalam prompt/audit sensitif; batasi akses role dan retensi. Portal magic link adalah bearer credential: jangan simpan di public log, kurangi umur dan cabut saat dibutuhkan.
+
+Generated code berjalan Docker dengan batas yang dijelaskan [sandbox](SANDBOX.md). Socket Docker hanya runner tepercaya; jangan memasang pada API/worker/Next. Jangan memublikasikan RUNNER_URL. Sandbox tidak menerima key LLM, SMTP, database platform, Gitea token. Publikasi Git dilakukan broker API, bukan host shell/Git dari repo tidak tepercaya.
+
+Generated aplikasi disajikan origin **127.0.0.1:4400**, platform **localhost:3000/4000**. Cookie hanya berbeda port masih dibagi: hostname berbeda wajib. Jangan menyajikan HTML tidak tepercaya dari API artifact secara same-origin tanpa sandbox/download disposition. Production gunakan domain aplikasi berbeda, bukan sibling path dashboard. Iframe preview harus sandboxed.
+
+Demo compliance/secret/security scanner deterministik bersifat basic, bukan SAST enterprise/penetration test. Tidak ada jaminan semua penyalahgunaan atau kerentanan terdeteksi. Delivery hanya berdasarkan laporan yang benar-benar dihasilkan. Integrasi pembayaran, data medis/PII, tenant DB, migration rollback, license review memerlukan review risiko dan konfigurasi nyata.
+
+Sebelum produksi: daemon/VM sandbox khusus; filesystem quota; TLS ingress; outbound registry proxy allowlist; secret vault; least privilege Gitea/S3; DB encryption/backup/restore; log redaction; provider webhook verification; monitoring/alert; pengujian isolasi/rate-limit/CSRF/portal expiry; kebijakan UU PDP/retensi; review dependencies serta image scan. Jangan mengklaim at-rest encryption aktif dari volume Docker biasa. SMTP accepted tidak membuktikan email delivered. Hapus status ambigu hanya setelah rekonsiliasi provider, bukan dengan memalsukan gate.
