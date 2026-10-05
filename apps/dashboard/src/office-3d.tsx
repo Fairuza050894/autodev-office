@@ -109,8 +109,10 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
   const host = useRef<HTMLDivElement>(null);
   const select = useRef(onSelect);
   select.current = onSelect;
-  const state = useRef({ agents, tasks, focusFloor });
-  state.current = { agents, tasks, focusFloor };
+  const focusRef = useRef(focusFloor);
+  focusRef.current = focusFloor;
+  const state = useRef({ agents, tasks });
+  state.current = { agents, tasks };
 
   useEffect(() => {
     const el = host.current;
@@ -238,8 +240,12 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
       floaters.push({ g, base: g.position.y, busy: isBusyAgent(a), phase: ai * 0.9 });
     });
 
-    const target = new THREE.Vector3(0, 10, 0);
-    let theta = 0.75, phi = 1.02, radius = 58, auto = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const initF = focusRef.current;
+    const target = new THREE.Vector3(0, initF < 0 ? 10 : initF * GAP + 2.5, 0);
+    const goal = target.clone();
+    let goalRadius = initF < 0 ? 58 : 36;
+    let lastFocus = initF;
+    let theta = 0.75, phi = 1.02, radius = goalRadius, auto = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const applyCam = () => {
       camera.position.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
@@ -298,8 +304,15 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
     let raf = 0;
     const tick = () => {
       const t = clock.getElapsedTime();
+      const ff = focusRef.current;
+      if (ff !== lastFocus) { lastFocus = ff; auto = false; goal.set(0, ff < 0 ? 10 : ff * GAP + 2.5, 0); goalRadius = ff < 0 ? 58 : 36; }
+      if (target.distanceToSquared(goal) > 0.0001 || Math.abs(radius - goalRadius) > 0.01) {
+        target.lerp(goal, 0.07);
+        radius += (goalRadius - radius) * 0.07;
+        applyCam();
+      }
       if (auto) { theta += 0.0016; applyCam(); }
-      for (const f of floaters) if (f.busy) f.g.position.y = f.base + Math.sin(t * 2 + f.phase) * 0.18;
+      for (const fl of floaters) if (fl.busy) fl.g.position.y = fl.base + Math.sin(t * 2 + fl.phase) * 0.18;
       blinkers.forEach((b, i) => { (b as THREE.Mesh).visible = Math.sin(t * 3 + i) > -0.2; });
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
