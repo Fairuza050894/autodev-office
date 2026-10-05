@@ -23,9 +23,9 @@ function textSprite(text: string, accent = '#a5b4fc', scale = 1): THREE.Sprite {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true });
   const sp = new THREE.Sprite(mat);
-  sp.scale.set(7.2 * scale, 1.8 * scale, 1);
+  sp.scale.set(5.4 * scale, 1.35 * scale, 1);
   return sp;
 }
 
@@ -212,8 +212,8 @@ function makeAgent(a: Row, ai: number): { g: Walker; pick: THREE.Object3D[] } {
     ring.position.y = 0.1;
     g.add(ring);
   }
-  const label = textSprite(String((a as Record<string, unknown>).name ?? (a as Record<string, unknown>).id ?? `agen-${ai}`).slice(0, 14), color, 0.62);
-  label.position.y = 3.35;
+  const label = textSprite(String((a as Record<string, unknown>).name ?? (a as Record<string, unknown>).id ?? `agen-${ai}`).slice(0, 14), color, 0.45);
+  label.position.y = 3.05;
   g.add(label);
   const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.7, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 }));
   shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.02; g.add(shadow);
@@ -370,12 +370,16 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
         fg.add(furn);
         furn.traverse(o => { if ((o as THREE.Mesh).userData.blink) blinkers.push(o); });
         const label = textSprite(room.name, active ? '#22d3ee' : floorCols[fi]);
-        label.position.set(cx, baseY + 6.1, cz);
+        label.position.set(cx, baseY + 4.2, cz);
         fg.add(label);
+        labels.push(label);
+        (roomLabels[fi] ??= []).push(label);
       });
-      const tag = textSprite(fl.name.toUpperCase(), floorCols[fi], 1.05);
+      const tag = textSprite(fl.name.toUpperCase(), floorCols[fi], 0.85);
       tag.position.set(-FW / 2 - 7.2, baseY + 2.6, 0);
       fg.add(tag);
+      labels.push(tag);
+      (roomLabels[fi] ??= []).push(tag);
       flatBase += fl.rooms.length;
     });
     // Inti tangga/lift + atap
@@ -446,11 +450,16 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
     let lastReset = resetRef.current;
     let theta = HELI.theta, phi = initF < 0 ? HELI.phi : 1.12, radius = goalRadius;
     let auto = !reduced && spinRef.current;
+    const labels: THREE.Sprite[] = [];
+    const roomLabels: THREE.Sprite[][] = [];
     const applyDim = (ff: number) => {
       floorGroups.forEach((fg2, fi2) => {
         const dim = ff >= 0 && fi2 !== ff;
+        // Label ruangan/tag lantai non-fokus disembunyikan total (bukan cuma redup) agar tidak numpuk
+        (roomLabels[fi2] ?? []).forEach(sp => { sp.visible = !dim; });
         fg2.traverse(o => {
           if ((o as THREE.Points).isPoints || o.userData.noDim) return;
+          if ((o as THREE.Sprite).isSprite && (roomLabels[fi2] ?? []).includes(o as THREE.Sprite)) return;
           const mm = o as THREE.Mesh | THREE.Sprite;
           const material = (mm as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
           if (!material) return;
