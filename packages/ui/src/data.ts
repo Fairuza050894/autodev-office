@@ -21,10 +21,10 @@ const shape:Record<string,z.ZodType>={};
 for(const key of strings)shape[key]=z.string().nullish();
 for(const key of numbers)shape[key]=z.union([z.number(),z.string().regex(/^-?\d+(\.\d+)?$/)]).nullish();
 for(const key of objects)shape[key]=z.record(z.unknown()).nullish();
-for(const key of arrays)shape[key]=z.array(z.record(z.unknown())).nullish();
+for(const key of arrays)shape[key]=z.array(z.unknown()).nullish();
 for(const key of ['dependencies','depends_on','trace_task_ids','questions'])shape[key]=z.array(z.string()).nullish();
 shape.model=z.union([z.string(),z.object({provider:z.string(),name:z.string()}).passthrough()]).nullish();
 shape.content=z.union([z.string(),z.record(z.unknown())]).nullish();
 shape.version=z.union([z.string(),z.number()]).nullish();
 const schema=z.object(shape).passthrough();
-export function parseRow(value:unknown):Row { const result=schema.parse(value); for(const key of [...objects,...arrays]) { const nested=result[key]; if(Array.isArray(nested))result[key]=nested.map(parseRow); else if(nested&&typeof nested==='object')result[key]=parseRow(nested); } return result as Row; }
+export function parseRow(value:unknown):Row { const result=schema.parse(value); for(const key of [...objects,...arrays]) { const nested=result[key]; if(Array.isArray(nested))result[key]=nested.map(item=>item&&typeof item==='object'&&!Array.isArray(item)?parseRow(item):item); else if(nested&&typeof nested==='object')result[key]=parseRow(nested); } return result as Row; }

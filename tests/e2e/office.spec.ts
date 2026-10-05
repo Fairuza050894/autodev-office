@@ -13,12 +13,17 @@ test('chat klinik menghasilkan aplikasi sehat, bukti QA dan email sebelum DELIVE
   const login = await request.post('/api/v1/auth/login', { data: { email: 'admin@autodev.local', password: 'AutoDevLocal2026!' } });
   expect(login.ok()).toBe(true);
   await page.goto('/');
-  await expect(page.locator('body')).toContainText('AutoDev');
+  await expect(page.locator('body')).toContainText(/autodev/i);
+  await page.locator('input[name="email"]').fill('admin@autodev.local');
+  await page.locator('input[name="password"]').fill('AutoDevLocal2026!');
+  await page.getByRole('button', { name: /masuk ke kantor/i }).click();
+  await expect(page.locator('body')).toContainText(/Ringkasan|Proyek|Kantor virtual/i);
   const sessionResponse = await request.post('/api/v1/chat/sessions', { data: {} });
   expect(sessionResponse.ok()).toBe(true);
   const session = z.object({ id: z.string() }).parse(await sessionResponse.json());
+  const klinikEmail=`klinik-${Date.now()}@example.com`;
   const response = await request.post(`/api/v1/chat/sessions/${session.id}/messages`, {
-    data: { message: 'Buatkan website company profile untuk klinik gigi dengan profil dokter, layanan, formulir janji temu. Email saya klinik-e2e@example.com.' }
+    data: { message: `Buatkan website company profile untuk klinik gigi dengan profil dokter, layanan, formulir janji temu. Email saya ${klinikEmail}.` }
   });
   expect(response.ok()).toBe(true);
   const intake = z.object({ project_id: z.string() }).parse(await response.json());
@@ -41,7 +46,7 @@ test('chat klinik menghasilkan aplikasi sehat, bukti QA dan email sebelum DELIVE
   expect(project.artifacts.some(artifact => /security/i.test(artifact.type + artifact.name))).toBe(true);
   const mail = await request.get('http://localhost:8025/api/v1/messages');
   expect(mail.ok()).toBe(true);
-  expect(JSON.stringify(await mail.json())).toContain('klinik-e2e@example.com');
-  await page.reload();
+  expect(JSON.stringify(await mail.json())).toContain(klinikEmail);
+  await page.goto(`/projects/${intake.project_id}`);
   await expect(page.locator('body')).toContainText('DELIVERED');
 });
