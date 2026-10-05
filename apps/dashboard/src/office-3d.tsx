@@ -105,12 +105,16 @@ function furnitureFor(room: string): THREE.Group {
   return deskSet();
 }
 
-export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: { agents: Row[]; tasks: Row[]; onSelect: (r: Row) => void; focusFloor?: number }) {
+export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, resetToken = 0, spin = true }: { agents: Row[]; tasks: Row[]; onSelect: (r: Row) => void; focusFloor?: number; resetToken?: number; spin?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const select = useRef(onSelect);
   select.current = onSelect;
   const focusRef = useRef(focusFloor);
   focusRef.current = focusFloor;
+  const resetRef = useRef(resetToken);
+  resetRef.current = resetToken;
+  const spinRef = useRef(spin);
+  spinRef.current = spin;
   const state = useRef({ agents, tasks });
   state.current = { agents, tasks };
 
@@ -153,6 +157,7 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
 
     const building = new THREE.Group();
     scene.add(building);
+    const floorGroups: THREE.Group[] = [];
     const blinkers: THREE.Object3D[] = [];
     const floaters: { g: THREE.Group; base: number; busy: boolean; phase: number }[] = [];
     const pickables: THREE.Object3D[] = [];
@@ -161,9 +166,12 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
     const floorCols = ['#6366f1', '#22d3ee', '#a78bfa'];
     officeFloors.forEach((fl, fi) => {
       const baseY = fi * GAP;
+      const fg = new THREE.Group();
+      building.add(fg);
+      floorGroups.push(fg);
       const slab = box(FW + 2, 0.7, FD + 2, '#1a2350');
       slab.position.y = baseY;
-      building.add(slab);
+      fg.add(slab);
       const cols = 3, cw = FW / cols, rows = Math.ceil(fl.rooms.length / cols), cd = FD / rows;
       fl.rooms.forEach((room, ri) => {
         const occupied = state.current.agents.filter((a, ai) => {
@@ -176,27 +184,27 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
         const cx = -FW / 2 + col * cw + cw / 2, cz = -FD / 2 + row * cd + cd / 2;
         const tile = box(cw - 0.7, 0.25, cd - 0.7, active ? '#2b3a7d' : '#202a5c');
         tile.position.set(cx, baseY + 0.45, cz);
-        building.add(tile);
+        fg.add(tile);
         const wallMat = new THREE.MeshStandardMaterial({ color: active ? 0x6366f1 : 0x39447c, roughness: 0.8, transparent: true, opacity: 0.9 });
         const back = new THREE.Mesh(new THREE.BoxGeometry(cw - 0.7, 2.4, 0.3), wallMat);
         back.position.set(cx, baseY + 1.6, cz - cd / 2 + 0.5);
         back.castShadow = true;
-        building.add(back);
+        fg.add(back);
         const side = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.4, cd - 0.7), wallMat);
         side.position.set(cx - cw / 2 + 0.5, baseY + 1.6, cz);
         side.castShadow = true;
-        building.add(side);
+        fg.add(side);
         const furn = furnitureFor(room.name);
         furn.position.set(cx, baseY + 0.55, cz + 0.6);
-        building.add(furn);
+        fg.add(furn);
         furn.traverse(o => { if ((o as THREE.Mesh).userData.blink) blinkers.push(o); });
         const label = textSprite(room.name, active ? '#22d3ee' : floorCols[fi]);
         label.position.set(cx, baseY + 5.6, cz);
-        building.add(label);
+        fg.add(label);
       });
       const tag = textSprite(fl.name.toUpperCase(), floorCols[fi]);
       tag.position.set(-FW / 2 - 6.5, baseY + 2.4, 0);
-      building.add(tag);
+      fg.add(tag);
     });
 
     const detailOf = (a: Row) => parseRow({ ...a, current_task: a.current_task || state.current.tasks.find(t => t.id === a.current_task_id) });
@@ -236,16 +244,35 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
       body.userData.pick = g;
       head.userData.pick = g;
       pickables.push(body, head);
-      building.add(g);
+      floorGroups[fi].add(g);
       floaters.push({ g, base: g.position.y, busy: isBusyAgent(a), phase: ai * 0.9 });
     });
 
+    const HELI = { y: 10, r: 64, phi: 1.02, theta: 0.75 };
+    const FOCUS_R = 48;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const initF = focusRef.current;
-    const target = new THREE.Vector3(0, initF < 0 ? 10 : initF * GAP + 2.5, 0);
+    const target = new THREE.Vector3(0, initF < 0 ? HELI.y : initF * GAP + 2.5, 0);
     const goal = target.clone();
-    let goalRadius = initF < 0 ? 58 : 36;
+    let goalRadius = initF < 0 ? HELI.r : FOCUS_R;
+    let goalPhi = initF < 0 ? HELI.phi : 1.12;
     let lastFocus = initF;
-    let theta = 0.75, phi = 1.02, radius = goalRadius, auto = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let lastReset = resetRef.current;
+    let theta = HELI.theta, phi = initF < 0 ? HELI.phi : 1.12, radius = goalRadius;
+    let auto = !reduced && spinRef.current;
+    const applyDim = (ff: number) => {
+      floorGroups.forEach((fg2, fi2) => {
+        const dim = ff >= 0 && fi2 !== ff;
+        fg2.traverse(o => {
+          const mm = o as THREE.Mesh | THREE.Sprite;
+          const mat = (mm as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+          if (!mat) return;
+          const mats = Array.isArray(mat) ? mat : [mat];
+          mats.forEach(mt => { mt.transparent = true; mt.opacity = dim ? 0.14 : 1; });
+        });
+      });
+    };
+    applyDim(initF);
     const applyCam = () => {
       camera.position.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
@@ -262,7 +289,7 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
     dom.style.display = 'block';
     dom.style.width = '100%';
     dom.style.height = '100%';
-    const down = (e: PointerEvent) => { dragging = true; moved = 0; lx = e.clientX; ly = e.clientY; downAt = Date.now(); auto = false; dom.setPointerCapture(e.pointerId); };
+    const down = (e: PointerEvent) => { dragging = true; moved = 0; lx = e.clientX; ly = e.clientY; downAt = Date.now(); auto = false; try { dom.setPointerCapture(e.pointerId); } catch {} };
     const move = (e: PointerEvent) => {
       if (!dragging) return;
       const dx = e.clientX - lx, dy = e.clientY - ly;
@@ -305,10 +332,24 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1 }: {
     const tick = () => {
       const t = clock.getElapsedTime();
       const ff = focusRef.current;
-      if (ff !== lastFocus) { lastFocus = ff; auto = false; goal.set(0, ff < 0 ? 10 : ff * GAP + 2.5, 0); goalRadius = ff < 0 ? 58 : 36; }
-      if (target.distanceToSquared(goal) > 0.0001 || Math.abs(radius - goalRadius) > 0.01) {
+      if (ff !== lastFocus) {
+        lastFocus = ff;
+        goal.set(0, ff < 0 ? HELI.y : ff * GAP + 2.5, 0);
+        goalRadius = ff < 0 ? HELI.r : FOCUS_R;
+        goalPhi = ff < 0 ? HELI.phi : 1.12;
+        applyDim(ff);
+      }
+      if (resetRef.current !== lastReset) {
+        lastReset = resetRef.current;
+        theta = HELI.theta; goalPhi = HELI.phi;
+        goal.set(0, HELI.y, 0); goalRadius = HELI.r;
+        auto = !reduced && spinRef.current;
+      }
+      auto = !dragging && !reduced && spinRef.current;
+      if (target.distanceToSquared(goal) > 0.0001 || Math.abs(radius - goalRadius) > 0.01 || Math.abs(phi - goalPhi) > 0.001) {
         target.lerp(goal, 0.07);
         radius += (goalRadius - radius) * 0.07;
+        phi += (goalPhi - phi) * 0.07;
         applyCam();
       }
       if (auto) { theta += 0.0016; applyCam(); }
