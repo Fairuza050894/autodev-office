@@ -306,6 +306,8 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
       if (!byRoom.has(gi)) byRoom.set(gi, []);
       byRoom.get(gi)!.push(ai);
     });
+    const labels: THREE.Sprite[] = [];
+    const roomLabels: THREE.Sprite[][] = [];
     let flatBase = 0;
     officeFloors.forEach((fl, fi) => {
       const baseY = fi * GAP;
@@ -450,8 +452,6 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
     let lastReset = resetRef.current;
     let theta = HELI.theta, phi = initF < 0 ? HELI.phi : 1.12, radius = goalRadius;
     let auto = !reduced && spinRef.current;
-    const labels: THREE.Sprite[] = [];
-    const roomLabels: THREE.Sprite[][] = [];
     const applyDim = (ff: number) => {
       floorGroups.forEach((fg2, fi2) => {
         const dim = ff >= 0 && fi2 !== ff;
