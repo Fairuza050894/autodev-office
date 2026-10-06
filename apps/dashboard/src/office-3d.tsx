@@ -9,8 +9,8 @@ import { parseRow, type Row } from '@autodev/ui';
 import { isBusyAgent, officeFloors, roomOfAgent } from './office-data';
 import { animFor, charEntry } from './character-manifest';
 
-const FW = 32, FD = 22, GAP = 10.5;
-const HELI = { y: 12, r: 70, phi: 0.92, theta: 0.75 };
+const FW = 32, FD = 22, GAP = 14;
+const HELI = { y: 12, r: 108, phi: 1.0, theta: 0.75 };
 const floorCols = ['#f59e0b', '#22d3ee', '#c084fc'];
 const ROOM_ICON: Record<string,string> = { RECEPTION:'◉', 'PM ROOM':'✦', 'BA & PO':'▤', 'DESIGN STUDIO':'✎', ARCHITECTURE:'⌂', 'DEV FLOOR':'⌨', 'QA LAB':'🧪', SECURITY:'🛡', 'DEVOPS / SERVER':'🖥', 'RELEASE DESK':'🚀', LIBRARY:'📚', PANTRY:'☕', 'GAME ROOM':'🎮', 'REST ROOM':'💤', GYM:'🏋', 'ROOFTOP LOUNGE':'🌙' };
 interface NavState { theta: number; phi: number; r: number; gr: number; gp: number; lx: number; ly: number; moved: number }
@@ -29,7 +29,7 @@ function slotPos(room: string, ai: number): [number, number, number] {
 }
 
 // Monitor: layar emissive + log nyata (Html) + cursor blink + scroll
-function DeskMonitor({ log, accent = '#8ea2ff' }: { log: string; accent?: string }) {
+function DeskMonitor({ log, accent = '#8ea2ff', showLog = true }: { log: string; accent?: string; showLog?: boolean }) {
   const [tick, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick(v => v + 1), 1200); return () => clearInterval(t); }, []);
   const lines = useMemo(() => {
@@ -47,41 +47,41 @@ function DeskMonitor({ log, accent = '#8ea2ff' }: { log: string; accent?: string
         <planeGeometry args={[1.2, 0.7]} />
         <meshBasicMaterial color={accent} transparent opacity={0.55} />
       </mesh>
-      <Html position={[-0.4, 1.78, -0.22]} transform occlude="blending" distanceFactor={8} style={{ pointerEvents: 'none' }}>
+      {showLog && <Html position={[-0.4, 1.78, -0.22]} transform occlude="blending" distanceFactor={8} style={{ pointerEvents: 'none' }}>
         <div style={{ width: 150, fontSize: 9, fontFamily: 'monospace', color: '#c7d2fe', background: 'rgba(5,8,20,.78)', padding: '4px 6px', borderRadius: 4, lineHeight: 1.35 }}>
           {shown.map((l, i) => <div key={i} style={{ opacity: 0.45 + (0.55 * (i + 1)) / shown.length, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.slice(0, 26)}</div>)}
           <span style={{ animation: 'blink 1s steps(2) infinite' }}>▊</span>
         </div>
-      </Html>
+      </Html>}
     </group>
   );
 }
 
 // Furniture nyata per ruangan (JSX, tanpa helper box()/mat() lama)
-function Desk({ color = '#46538c', log = '', accent }: { color?: string; log?: string; accent?: string }) {
+function Desk({ color = '#46538c', log = '', accent, showLog = true }: { color?: string; log?: string; accent?: string; showLog?: boolean }) {
   return (
     <group>
       <mesh position={[0, 1.05, 0]} castShadow receiveShadow><boxGeometry args={[3.4, 0.22, 1.7]} /><meshStandardMaterial color="#46538c" roughness={0.65} /></mesh>
       {[[-1.5], [1.5]].map(([x]) => <mesh key={x} position={[x, 0.5, 0]} castShadow><boxGeometry args={[0.18, 1.0, 1.4]} /><meshStandardMaterial color="#232c52" roughness={0.7} /></mesh>)}
-      <DeskMonitor log={log} accent={accent} />
+      <DeskMonitor log={log} accent={accent} showLog={showLog} />
       <mesh position={[-0.4, 1.2, 0.5]}><boxGeometry args={[1.1, 0.08, 0.4]} /><meshStandardMaterial color="#1b2450" /></mesh>
       <mesh position={[0.3, 0.5, 1.7]} castShadow><boxGeometry args={[0.9, 0.55, 0.9]} /><meshStandardMaterial color={color} roughness={0.6} /></mesh>
       <mesh position={[0.3, 1.1, 2.05]} castShadow><boxGeometry args={[0.9, 0.8, 0.18]} /><meshStandardMaterial color={color} roughness={0.6} /></mesh>
     </group>
   );
 }
-function Furniture({ room, log, accent }: { room: string; log: string; accent: string }) {
+function Furniture({ room, log, accent, showLog = true }: { room: string; log: string; accent: string; showLog?: boolean }) {
   if (/RECEPTION/.test(room)) return <group><mesh position={[0, 0.5, 0]} castShadow><boxGeometry args={[4.2, 1.0, 0.9]} /><meshStandardMaterial color="#6366f1" /></mesh><group position={[0, 0, 2.8]}><mesh position={[0, 0.35, 0]} castShadow><boxGeometry args={[3.2, 0.7, 1.2]} /><meshStandardMaterial color="#22d3ee" /></mesh></group></group>;
   if (/PM ROOM|RELEASE/.test(room)) return <group><mesh position={[0, 1, 0]} castShadow receiveShadow><cylinderGeometry args={[1.7, 1.7, 0.22, 20]} /><meshStandardMaterial color="#8b98c4" /></mesh><mesh position={[0, 0.5, 0]}><cylinderGeometry args={[0.25, 0.35, 1, 10]} /><meshStandardMaterial color="#232c52" /></mesh>{[0, 1, 2, 3].map(i => { const a = (i / 4) * Math.PI * 2; return <mesh key={i} position={[Math.cos(a) * 2.6, 0.37, Math.sin(a) * 2.6]} castShadow><boxGeometry args={[0.7, 0.75, 0.7]} /><meshStandardMaterial color="#6366f1" /></mesh>; })}<mesh position={[0, 2.2, -2.9]}><boxGeometry args={[2.4, 1.3, 0.1]} /><meshStandardMaterial color="#e8ddc8" emissive={0x445566} emissiveIntensity={0.5} /></mesh></group>;
   if (/SERVER|QA|SECURITY|DEVOPS/.test(room)) return <group>{[0, 1].map(i => <group key={i} position={[i * 1.6 - 0.8, 0, 0]}><mesh position={[0, 1.6, 0]} castShadow><boxGeometry args={[1.2, 3.2, 1]} /><meshStandardMaterial color="#1b2450" emissive={0x113366} emissiveIntensity={0.8} /></mesh>{[0, 1, 2, 3].map(l => <mesh key={l} position={[0, 0.7 + l * 0.7, 0.55]}><sphereGeometry args={[0.09, 8, 8]} /><meshBasicMaterial color={l % 2 ? '#22c55e' : '#22d3ee'} /></mesh>)}</group>)}<mesh position={[0, 0.45, 1.8]}><boxGeometry args={[1.8, 0.9, 0.7]} /><meshStandardMaterial color="#46538c" /></mesh><mesh position={[0, 1.3, 1.7]}><boxGeometry args={[1.5, 0.7, 0.08]} /><meshStandardMaterial color="#0b1020" emissive={0x22d3ee} emissiveIntensity={0.9} /></mesh></group>;
   if (/GYM/.test(room)) return <group><mesh position={[0, 0.45, 0]} castShadow><boxGeometry args={[2.6, 0.45, 0.9]} /><meshStandardMaterial color="#7c3aed" /></mesh><mesh position={[1.8, 0.05, 0]}><boxGeometry args={[1.4, 0.1, 2.6]} /><meshStandardMaterial color="#22c55e" /></mesh>{[0, 1, 2].map(i => <mesh key={i} position={[-1.1, 0.5 + i * 0.35, 0.55]} castShadow><cylinderGeometry args={[0.35, 0.35, 0.12, 14]} /><meshStandardMaterial color={i ? '#f59e0b' : '#6366f1'} /></mesh>)}</group>;
   if (/PANTRY/.test(room)) return <group><mesh position={[0, 0.5, 0]} castShadow><boxGeometry args={[3.4, 1, 1]} /><meshStandardMaterial color="#8a5a2b" /></mesh><mesh position={[0, 1.05, 0]}><boxGeometry args={[3.6, 0.12, 1.2]} /><meshStandardMaterial color="#e8ddc8" /></mesh></group>;
-  if (/BA & PO|DESIGN|ARCHITECTURE/.test(room)) return <group><Desk log={log} accent={accent} /><group position={[0, 0, -3.4]} rotation-y={Math.PI}><Desk color="#a78bfa" log={log} accent={accent} /></group><mesh position={[-3.4, 2.1, -0.6]} rotation-y={Math.PI / 2}><boxGeometry args={[2.6, 1.4, 0.1]} /><meshStandardMaterial color="#e8ddc8" emissive={0x334455} emissiveIntensity={0.5} /></mesh></group>;
-  return <group><Desk log={log} accent={accent} /><group position={[0, 0, -3.2]} rotation-y={Math.PI}><Desk color="#22d3ee" log={log} accent={accent} /></group></group>;
+  if (/BA & PO|DESIGN|ARCHITECTURE/.test(room)) return <group><Desk log={log} accent={accent} showLog={showLog} /><group position={[0, 0, -3.4]} rotation-y={Math.PI}><Desk color="#a78bfa" log={log} accent={accent} showLog={showLog} /></group><mesh position={[-3.4, 2.1, -0.6]} rotation-y={Math.PI / 2}><boxGeometry args={[2.6, 1.4, 0.1]} /><meshStandardMaterial color="#e8ddc8" emissive={0x334455} emissiveIntensity={0.5} /></mesh></group>;
+  return <group><Desk log={log} accent={accent} showLog={showLog} /><group position={[0, 0, -3.2]} rotation-y={Math.PI}><Desk color="#22d3ee" log={log} accent={accent} showLog={showLog} /></group></group>;
 }
 
 // Agen GLB rig — useGLTF + useAnimations, crossfade 0.3s, klip dari status
-function Agent({ a, ai, pos, showLabel = true, nav, onSelect }: { a: Row; ai: number; pos: [number, number, number]; showLabel?: boolean; nav: React.MutableRefObject<NavState>; onSelect: (r: Row) => void }) {
+function Agent({ a, ai, pos, showLabel = true, nav, onSelect, focusAll = false }: { a: Row; ai: number; pos: [number, number, number]; showLabel?: boolean; nav: React.MutableRefObject<NavState>; onSelect: (r: Row) => void; focusAll?: boolean }) {
   const entry = charEntry(a, ai);
   const { scene, animations } = useGLTF(entry.file);
   const ref = useRef<THREE.Group>(null);
@@ -113,15 +113,15 @@ function Agent({ a, ai, pos, showLabel = true, nav, onSelect }: { a: Row; ai: nu
     else ref.current.scale.setScalar(1);
   });
   const raw = String((a as Record<string, unknown>).display_name ?? (a as Record<string, unknown>).name ?? (a as Record<string, unknown>).id ?? `agen-${ai}`);
-  const name = raw.replace(' — ', ' · ').replace(' - ', ' · ').slice(0, 22);
+  const name = raw.replace(' — ', ' · ').replace(' - ', ' · ').slice(0, 26);
   const st = String((a as Record<string, unknown>).status ?? '').toLowerCase();
   const ring = st === 'working' || st === 'running' || Boolean((a as Record<string, unknown>).current_task_id) ? '#6366f1' : st === 'blocked' || st === 'failed' ? '#f59e0b' : '#22c55e';
   return (
     <group ref={ref} position={pos} rotation-y={(ai * 1.3) % (Math.PI * 2)} userData={{ agent: a }} onClick={e => { e.stopPropagation(); if (nav.current.moved > 6) return; onSelect(a); }}>
       <primitive object={model} scale={1.6} />
-      {showLabel && <Billboard position={[0, 4.6, 0]}>
-        <Html center zIndexRange={[60, 0]} style={{ pointerEvents: 'none' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(10,15,35,.88)', border: `2px solid ${entry.color}`, borderRadius: 12, padding: '3px 10px', whiteSpace: 'nowrap', boxShadow: '0 2px 12px #0008' }}>{name}</div>
+{showLabel && (!focusAll || busy) && <Billboard position={[0, 4.6, 0]}>
+        <Html center zIndexRange={[60, 0]} occlude="raycast" style={{ pointerEvents: 'none' }}>
+          <div style={{ fontSize: focusAll ? 12 : 13, fontWeight: 700, color: '#fff', background: 'rgba(10,15,35,.88)', border: `2px solid ${entry.color}`, borderRadius: 12, padding: '3px 10px', whiteSpace: 'nowrap', boxShadow: '0 2px 12px #0008' }}>{focusAll ? name.split(' · ')[0] : name}</div>
         </Html>
       </Billboard>}
       <mesh rotation-x={-Math.PI / 2} position-y={0.08}><torusGeometry args={[1.1, 0.1, 8, 32]} /><meshBasicMaterial color={ring} transparent opacity={0.95} /></mesh>
@@ -182,13 +182,13 @@ function Room({ room, cx, cz, cw, cd, fi, occ, log, dim, focusAll, nav, onSelect
       <mesh position={[0, 1.2, -cd / 2 + 0.5]} castShadow><boxGeometry args={[cw - 0.7, 2.5, 0.28]} /><meshStandardMaterial color={active ? 0x6d7bff : 0x39447c} roughness={0.75} transparent opacity={dim ? 0.14 : 0.92} /></mesh>
       <mesh position={[-cw / 2 + 0.5, 1.2, 0]} castShadow><boxGeometry args={[0.28, 2.5, cd - 0.7]} /><meshStandardMaterial color={active ? 0x6d7bff : 0x39447c} roughness={0.75} transparent opacity={dim ? 0.14 : 0.92} /></mesh>
       <mesh position={[0, 1.0, cd / 2 - 0.5]}><boxGeometry args={[cw - 0.7, 1.9, 0.12]} /><meshStandardMaterial color={0x93c5fd} roughness={0.15} metalness={0.4} transparent opacity={dim ? 0.14 : 0.22} /></mesh>
-      <group position={[0, 0.1, 0.4]}><Furniture room={room.name} log={log} accent={floorCols[fi]} /></group>
-      {(hover || !focusAll) && <Billboard position={[0, 3.6, 0]}>
+      <group position={[0, 0.1, 0.4]}><Furniture room={room.name} log={log} accent={floorCols[fi]} showLog={!focusAll} /></group>
+      {(hover || !focusAll) && <Billboard position={[0, 2.6, 0]}>
         <Html center zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: active ? '#fff7ed' : '#eef1ff', background: 'rgba(10,15,35,.88)', border: `2px solid ${active ? '#fdba74' : floorCols[fi]}`, borderRadius: 9, padding: '3px 9px', whiteSpace: 'nowrap', boxShadow: '0 2px 12px #0008' }}>{`${ROOM_ICON[room.name] ?? '▦'} ${room.name}${hover && occ.length ? ` · ${occ.length} agen` : ''}`}</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: active ? '#fff7ed' : '#eef1ff', background: 'rgba(10,15,35,.88)', border: `1.5px solid ${active ? '#fdba74' : floorCols[fi]}`, borderRadius: 8, padding: '2px 7px', whiteSpace: 'nowrap', boxShadow: '0 2px 12px #0008' }}>{`${ROOM_ICON[room.name] ?? '▦'} ${room.name}${hover && occ.length ? ` · ${occ.length} agen` : ''}`}</div>
         </Html>
       </Billboard>}
-      {occ.map(({ a, ai }) => { const [lx, _ly, lz] = slotPos(room.name, ai); return <Agent key={String(a.id)} a={a} ai={ai} pos={[lx, 0.62, lz]} showLabel={!focusAll} nav={nav} onSelect={onSelect} />; })}
+      {occ.map(({ a, ai }, k) => { const spots: [number, number, number][] = [[-1.5, 0.62, -1], [1.5, 0.62, -1], [-1.5, 0.62, 1.2], [1.5, 0.62, 1.2]]; const [lx, ly, lz] = spots[k % spots.length]; return <Agent key={String(a.id)} a={a} ai={ai} pos={[lx, ly, lz]} showLabel={hover || !focusAll} nav={nav} onSelect={onSelect} focusAll={focusAll} />; })}
     </group>
   );
 }
@@ -201,9 +201,11 @@ function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number;
   return (
     <group position-y={baseY}>
       <mesh position-y={0} receiveShadow><boxGeometry args={[FW + 2.5, 0.7, FD + 2.5]} /><meshStandardMaterial color="#1a2350" roughness={0.65} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>
-      <mesh position-y={0.42}><boxGeometry args={[FW + 2.6, 0.18, FD + 2.6]} /><meshStandardMaterial color={floorCols[fi]} emissive={floorCols[fi]} emissiveIntensity={0.35} roughness={0.6} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>
+      <mesh position-y={0.42}><boxGeometry args={[FW + 2.6, 0.14, FD + 2.6]} /><meshStandardMaterial color="#1a2350" emissive={floorCols[fi]} emissiveIntensity={0.12} roughness={0.6} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>
+      {[[0, FD / 2 + 1.2, FW + 2.6, 0.3], [0, -FD / 2 - 1.2, FW + 2.6, 0.3]].map(([x, z, w, d], i) => <mesh key={`ex${i}`} position={[x, 0.5, z]}><boxGeometry args={[w, 0.22, d]} /><meshStandardMaterial color={floorCols[fi]} emissive={floorCols[fi]} emissiveIntensity={0.9} roughness={0.5} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>)}
+      {[[FW / 2 + 1.2, 0], [-FW / 2 - 1.2, 0]].map(([x, z], i) => <mesh key={`ez${i}`} position={[x, 0.5, z]}><boxGeometry args={[0.3, 0.22, FD + 2.6]} /><meshStandardMaterial color={floorCols[fi]} emissive={floorCols[fi]} emissiveIntensity={0.9} roughness={0.5} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>)}
       {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => <mesh key={`${sx}${sz}`} position={[sx * (FW / 2 + 0.6), 2.6, sz * (FD / 2 + 0.6)]} castShadow><cylinderGeometry args={[0.4, 0.45, 4.6, 10]} /><meshStandardMaterial color="#2b3768" /></mesh>)}
-      <pointLight position={[0, 6.5, 0]} color={floorCols[fi]} intensity={14} distance={34} decay={1.8} />
+      <pointLight position={[0, 6.5, 0]} color="#fff2df" intensity={7} distance={26} decay={1.8} />
       {fl.rooms.map((room, ri) => {
         const col = ri % cols, row = Math.floor(ri / cols);
         const cx = -FW / 2 + col * cw + cw / 2, cz = -FD / 2 + row * cd + cd / 2;
@@ -212,7 +214,7 @@ function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number;
         const log = occ.map(({ a }) => logs.get(String(a.id)) ?? '').filter(Boolean).join('\n');
         return <Room key={room.name} room={room} cx={cx} cz={cz} cw={cw} cd={cd} fi={fi} occ={occ} log={log} dim={dim} focusAll={focusAll} nav={nav} onSelect={onSelect} />;
       })}
-      {focusAll && <Billboard position={[-FW / 2 - 6.5, 2.6, 0]}>
+      {focusAll && <Billboard position={[FW / 2 + 6.5, 3.2 + fi * 0.4, FD / 2 - 4 + fi]}>
         <Html center zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: '#eef1ff', background: 'rgba(10,15,35,.82)', border: `2px solid ${floorCols[fi]}`, borderRadius: 9, padding: '3px 10px', whiteSpace: 'nowrap' }}>{fl.name.toUpperCase()}</div>
         </Html>
@@ -258,7 +260,7 @@ function Confetti3D({ on }: { on: boolean }) {
 // Kontrol kamera: fokus lantai + reset + putar otomatis + ikuti agen
 function CamRig({ focus, resetToken, spin, dragging, nav, follow }: { focus: number; resetToken: number; spin: boolean; dragging: React.MutableRefObject<boolean>; nav: React.MutableRefObject<NavState>; follow?: THREE.Vector3 | null }) {
   const { camera } = useThree();
-  const st = useRef({ tx: new THREE.Vector3(0, HELI.y, 0), lastF: -99, lastR: -1, lastFol: '' });
+  const st = useRef({ tx: new THREE.Vector3(0, GAP, 0), lastF: -99, lastR: -1, lastFol: '' });
   useEffect(() => { st.current.lastF = -99; }, [focus]);
   useFrame((_, dt) => {
     const s = st.current, n = nav.current;
@@ -269,7 +271,7 @@ function CamRig({ focus, resetToken, spin, dragging, nav, follow }: { focus: num
       if (fk !== s.lastFol) s.lastFol = fk;
     } else if (focus !== s.lastF) {
       s.lastF = focus;
-      s.tx.set(0, focus < 0 ? HELI.y : focus * GAP + 2.5, 0);
+      s.tx.set(0, focus < 0 ? GAP : focus * GAP + 2.5, 0);
     }
     n.gr = follow ? 22 : focus < 0 ? HELI.r : 34; n.gp = follow ? 1.05 : focus < 0 ? HELI.phi : 1.12;
     n.r += (n.gr - n.r) * Math.min(1, dt * 4);
@@ -318,7 +320,7 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
   // ponytail: auto-quality + fallback 2D sudah ada di bawah; instancing/LOD karakter jauh = upgrade saat >40 agen
   if (!webgl) return <p className="muted">WebGL tidak tersedia di perangkat ini — gunakan denah 2D.</p>;
   return (
-    <div className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" style={{ height: 560 }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(110, Math.max(18, n.r + e.deltaY * 0.05)); }}>
+    <div className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" style={{ height: 680 }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(130, Math.max(18, n.r + e.deltaY * 0.05)); }}>
       <Canvas shadows dpr={weak ? 1 : [1, 2]} camera={{ fov: 32, near: 0.1, far: 600 }} gl={{ antialias: true, alpha: true, powerPreference: 'high-performance', toneMappingExposure: 1.0 }} onPointerDown={e => { dragging.current = true; nav.current.moved = 0; nav.current.lx = e.clientX; nav.current.ly = e.clientY; }} onPointerUp={() => { dragging.current = false; }}>
         <color attach="background" args={[nightMode ? '#070b1d' : '#131a35']} />
         <fog attach="fog" args={[nightMode ? '#0b1028' : '#1a2145', 120, 300]} />
