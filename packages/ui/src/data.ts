@@ -20,7 +20,7 @@ const arrays=['tasks','artifacts','events','approvals','requirements','test_runs
 const shape:Record<string,z.ZodType>={};
 for(const key of strings)shape[key]=z.string().nullish();
 for(const key of numbers)shape[key]=z.union([z.number(),z.string().regex(/^-?\d+(\.\d+)?$/)]).nullish();
-for(const key of objects)shape[key]=z.record(z.unknown()).nullish();
+for(const key of objects)shape[key]=key==='worker'?z.union([z.string(),z.record(z.unknown())]).nullish():z.record(z.unknown()).nullish();
 for(const key of arrays)shape[key]=z.array(z.unknown()).nullish();
 for(const key of ['dependencies','depends_on','trace_task_ids','questions'])shape[key]=z.array(z.string()).nullish();
 shape.model=z.union([z.string(),z.object({provider:z.string(),name:z.string()}).passthrough()]).nullish();
