@@ -3,37 +3,52 @@ import type { NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
   const apiUrl = process.env.API_URL;
+  
+  // Add debug header to verify middleware runs
+  const response = NextResponse.next();
+  response.headers.set('x-middleware-debug', 'running');
+  
   if (!apiUrl) {
-    return NextResponse.next();
+    response.headers.set('x-middleware-debug', 'no-api-url');
+    return response;
   }
 
   const { pathname } = request.nextUrl;
   
   if (pathname.startsWith('/api/v1/') || pathname.startsWith('/live/')) {
-    const targetUrl = `${apiUrl}${pathname}${request.nextUrl.search}`;
+    response.headers.set('x-middleware-debug', 'proxying');
     
-    const response = await fetch(targetUrl, {
-      method: request.method,
-      headers: {
-        ...Object.fromEntries(request.headers),
-        host: new URL(apiUrl).host,
-      },
-      body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.blob(),
-      redirect: 'manual',
-    });
+    try {
+      const targetUrl = `${apiUrl}${pathname}${request.nextUrl.search}`;
+      
+      const headers = new Headers(request.headers);
+      headers.set('host', new URL(apiUrl).host);
+      headers.delete('connection');
+      
+      const proxyResponse = await fetch(targetUrl, {
+        method: request.method,
+        headers,
+        body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.blob(),
+        redirect: 'manual',
+      });
 
-    const headers = new Headers(response.headers);
-    headers.delete('content-encoding');
-    headers.delete('transfer-encoding');
-    
-    return new NextResponse(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    });
+      const proxyHeaders = new Headers(proxyResponse.headers);
+      proxyHeaders.delete('content-encoding');
+      proxyHeaders.delete('transfer-encoding');
+      proxyHeaders.set('x-middleware-debug', 'proxied');
+      
+      return new NextResponse(proxyResponse.body, {
+        status: proxyResponse.status,
+        statusText: proxyResponse.statusText,
+        headers: proxyHeaders,
+      });
+    } catch (error) {
+      response.headers.set('x-middleware-debug', `error:${error instanceof Error ? error.message : 'unknown'}`);
+      return response;
+    }
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {
