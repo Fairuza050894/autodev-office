@@ -1,2 +1,2 @@
 import { fileURLToPath } from 'node:url';
-const config = { outputFileTracingRoot:fileURLToPath(new URL('../../',import.meta.url)), transpilePackages: ['@autodev/ui', '@autodev/client-portal'], async rewrites() { return [{ source: '/api/v1/:path*', destination: `${process.env.API_URL || 'http://localhost:4000'}/api/v1/:path*` }, { source: '/live/:path*', destination: `${process.env.API_URL || 'http://localhost:4000'}/live/:path*` }]; } }; export default config;
+const config = { outputFileTracingRoot: fileURLToPath(new URL('../../', import.meta.url)), transpilePackages: ['@autodev/ui', '@autodev/client-portal'] }; export default config;
