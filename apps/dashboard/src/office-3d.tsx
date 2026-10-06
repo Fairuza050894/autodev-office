@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Billboard, ContactShadows, Html, Sparkles, useGLTF } from '@react-three/drei';
+import { AdaptiveDpr, Billboard, ContactShadows, Html, Sparkles, useGLTF } from '@react-three/drei';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { parseRow, type Row } from '@autodev/ui';
@@ -12,7 +12,7 @@ import { animFor, charEntry } from './character-manifest';
 const FW = 36, FD = 24, GAP = 18;
 const HELI = { y: 14, r: 132, phi: 0.92, theta: 0.6 };
 const floorCols = ['#f59e0b', '#22d3ee', '#c084fc'];
-const ROOM_ICON: Record<string,string> = { RECEPTION:'◉', 'PM ROOM':'✦', 'BA & PO':'▤', 'DESIGN STUDIO':'✎', ARCHITECTURE:'⌂', 'DEV FLOOR':'⌨', 'QA LAB':'🧪', SECURITY:'🛡', 'DEVOPS / SERVER':'🖥', 'RELEASE DESK':'🚀', LIBRARY:'📚', PANTRY:'☕', 'GAME ROOM':'🎮', 'REST ROOM':'💤', GYM:'🏋', 'ROOFTOP LOUNGE':'🌙' };
+const ROOM_ICON: Record<string,string> = { RECEPTION:'◉', 'PM ROOM':'✦', 'BA & PO':'▤', 'DESIGN STUDIO':'✎', ARCHITECTURE:'⌂', 'DEV FLOOR':'⌨', 'QA LAB':'◈', SECURITY:'⬣', 'DEVOPS / SERVER':'▣', 'RELEASE DESK':'▲', LIBRARY:'▤', PANTRY:'●', 'GAME ROOM':'◆', 'REST ROOM':'◐', GYM:'⬢', 'ROOFTOP LOUNGE':'☾' };
 interface NavState { theta: number; phi: number; r: number; gr: number; gp: number; lx: number; ly: number; moved: number }
 export const ROOM_SPOTS: Record<string, [number, number, number]> = {
   RECEPTION: [0, 0.6, 0.4], 'PM ROOM': [0, 0.6, -1.2], 'BA & PO': [1.5, 0.6, 0.5],
@@ -28,15 +28,14 @@ function slotPos(room: string, ai: number): [number, number, number] {
   return [base[0] - 1.6 + (s % 2) * 2.2, base[1], base[2] - 1 + Math.floor(s / 2) * 1.8];
 }
 
-// Monitor: layar emissive + log nyata (Html) + cursor blink + scroll
+// Monitor: layar emissive + log nyata (Html) + cursor blink; tanpa interval per monitor
+// ponytail: tick global dihapus, 1 frame statis per monitor; Html hanya saat showLog
 function DeskMonitor({ log, accent = '#8ea2ff', showLog = true }: { log: string; accent?: string; showLog?: boolean }) {
-  const [tick, setTick] = useState(0);
-  useEffect(() => { const t = setInterval(() => setTick(v => v + 1), 1200); return () => clearInterval(t); }, []);
   const lines = useMemo(() => {
     const ls = log.split('\n').filter(Boolean).slice(-5);
     return ls.length ? ls : ['standby — menunggu tugas'];
   }, [log]);
-  const shown = lines.slice(0, 3 + (tick % 3));
+  const shown = lines.slice(0, 3);
   return (
     <group>
       <mesh position={[-0.4, 1.75, -0.3]} castShadow>
@@ -100,8 +99,9 @@ function Agent({ a, ai, pos, showLabel = true, nav, onSelect, focusAll = false }
     next.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.3).play();
     cur.current.act?.fadeOut(0.3);
     cur.current = { name: found.name, act: next };
-    return () => { mixer.stopAllAction(); };
+    return () => { cur.current.act?.fadeOut(0.3); };
   }, [clip, animations]);
+  useEffect(() => { return () => { mixer.stopAllAction(); }; }, [mixer]);
   const busy = isBusyAgent(a);
   const breathe = useRef(0);
   useFrame((st, dt) => {
@@ -146,6 +146,8 @@ function HandoffPaths({ agents }: { agents: Row[] }) {
     }
     return out;
   }, [agents.map(a => String(a.id) + String(a.status)).join(',')]);
+  const geos = useMemo(() => paths.map(p => new THREE.BufferGeometry().setFromPoints(p.curve.getPoints(24))), [paths]);
+  useEffect(() => () => { for (const g of geos) g.dispose(); }, [geos]);
   const dots = useRef<(THREE.Mesh | null)[]>([]);
   useFrame(st => {
     const t = st.clock.elapsedTime;
@@ -157,7 +159,7 @@ function HandoffPaths({ agents }: { agents: Row[] }) {
   });
   return (
     <group>
-      {paths.map((p, i) => { const g = new THREE.BufferGeometry().setFromPoints(p.curve.getPoints(24)); return <lineSegments key={i} geometry={g}><lineBasicMaterial color="#22d3ee" transparent opacity={0.5} /></lineSegments>; })}
+      {geos.map((g, i) => <lineSegments key={i} geometry={g}><lineBasicMaterial color="#22d3ee" transparent opacity={0.5} /></lineSegments>)}
       {paths.map((p, i) => <mesh key={`d${i}`} ref={el => { dots.current[i] = el; }}><sphereGeometry args={[0.22, 10, 10]} /><meshBasicMaterial color="#e8ddc8" /></mesh>)}
     </group>
   );
@@ -384,7 +386,11 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
     if (ai < 0) return null;
     return agentWorldPos(agents[ai], ai);
   }, [followId, agents.map(a => `${a.id}:${a.status}:${(a as { current_task_id?: string }).current_task_id ?? ''}`).join(',')]);
-  // ponytail: auto-quality + fallback 2D sudah ada di bawah; instancing/LOD karakter jauh = upgrade saat >40 agen
+  // ponytail: preload per lantai terlihat saja; 15MB sekaligus bikin screenshot kosong
+  useEffect(() => {
+    const list = focusFloor < 0 ? agents : (byFloor[focusFloor] ?? []).map(x => x.a);
+    preloadCharacters([...new Set(list.map(a => String((a as Record<string, unknown>).id ?? '')))].filter(Boolean).slice(0, 8));
+  }, [focusFloor, agents, byFloor]);
   if (!webgl) return <p className="muted">WebGL tidak tersedia di perangkat ini — gunakan denah 2D.</p>;
   return (
     <div className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" style={{ height: 680 }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(220, Math.max(30, n.r + e.deltaY * 0.08)); }}>
@@ -416,6 +422,7 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
           <Sparkles count={weak ? 20 : 60} scale={[70, 36, 55]} size={2} speed={0.25} opacity={0.35} color="#8ea2ff" position={[0, 12, 0]} />
         </Suspense>
         <CamRig focus={focusFloor} resetToken={resetToken} spin={spin && !followId} dragging={dragging} nav={nav} follow={followPos} />
+        <AdaptiveDpr pixelated />
         {!weak && <EffectComposer><Bloom intensity={0.35} luminanceThreshold={0.55} luminanceSmoothing={0.3} mipmapBlur /><Vignette darkness={0.45} offset={0.3} /></EffectComposer>}
       </Canvas>
       <style>{'@keyframes blink{50%{opacity:0}}'}</style>
