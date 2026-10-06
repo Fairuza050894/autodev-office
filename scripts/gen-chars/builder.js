@@ -59,16 +59,16 @@ function torsoGeo() {
     .map(([x, y]) => new THREE.Vector2(x, y));
   return xform(new THREE.LatheGeometry(pts, 14), 0, 1.10, 0);
 }
-function headGeo() { return xform(new THREE.SphereGeometry(0.30, 18, 14), 0, 2.02, 0); }
+function headGeo() { return xform(new THREE.SphereGeometry(0.38, 20, 16), 0, 2.06, 0); } // chibi: kepala ~1/3 badan
 function hairGeo(style, color) {
   void color;
   if (style === 1) { // sanggul
-    const a = xform(new THREE.SphereGeometry(0.315, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02);
+    const a = xform(new THREE.SphereGeometry(0.395, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02);
     const b = xform(new THREE.SphereGeometry(0.13, 10, 8), 0, 2.36, -0.18);
     return [a, b];
   }
   if (style === 2) { // spike
-    const parts = [xform(new THREE.SphereGeometry(0.315, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), 0, 2.06, -0.02)];
+    const parts = [xform(new THREE.SphereGeometry(0.395, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), 0, 2.06, -0.02)];
     for (let i = 0; i < 5; i++) {
       const c = new THREE.ConeGeometry(0.07, 0.22, 7);
       const a = (i / 5) * Math.PI * 2;
@@ -79,10 +79,10 @@ function hairGeo(style, color) {
   if (style === 3) { // panjang
     const pts = [new THREE.Vector2(0.32, 0), new THREE.Vector2(0.34, -0.25), new THREE.Vector2(0.30, -0.5)]
       .map(p => p);
-    return [xform(new THREE.SphereGeometry(0.315, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02),
+    return [xform(new THREE.SphereGeometry(0.395, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02),
       xform(new THREE.LatheGeometry(pts, 12, Math.PI * 0.6, Math.PI * 1.8), 0, 2.10, -0.05)];
   }
-  return [xform(new THREE.SphereGeometry(0.315, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02)]; // cepak
+  return [xform(new THREE.SphereGeometry(0.395, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02)]; // cepak
 }
 // Props peran (objek, bukan badan): bentuk sederhana, di-bind ke tulang terkait.
 function accessoryGeo(kind) {
@@ -154,7 +154,8 @@ const HAIRS = ['#1c1917', '#3f2d20', '#6b4a2f', '#8a8f98'];
 export function buildCharacter(spec) {
   const skin = SKINS[spec.i % SKINS.length];
   const hairC = HAIRS[(spec.i + 1) % HAIRS.length];
-  const outfit = spec.color;
+  const outfit = '#' + new THREE.Color(spec.color).offsetHSL(0, 0, ((spec.i % 3) - 1) * 0.05).getHexString();
+  const light = '#' + new THREE.Color(spec.color).offsetHSL(0, -0.05, 0.22).getHexString();
   const dark = '#232c52';
   const parts = [];
   parts.push(part(xform(new THREE.SphereGeometry(0.30, 12, 10), 0, 1.02, 0, 1.05, 0.75, 0.85), dark, 'Hips'));
@@ -163,7 +164,8 @@ export function buildCharacter(spec) {
   parts.pop();
   parts.push(part(headGeo(), skin, 'Head'));
   for (const g of hairGeo(spec.i % 4)) parts.push(part(g, hairC, 'Head'));
-  for (const sx of [-0.11, 0.11]) parts.push(part(xform(new THREE.SphereGeometry(0.042, 8, 8), sx, 2.05, 0.265), '#141a33', 'Head'));
+  for (const sx of [-0.13, 0.13]) parts.push(part(xform(new THREE.SphereGeometry(0.05, 8, 8), sx, 2.10, 0.335), '#141a33', 'Head'));
+  parts.push(part(xform(new THREE.TorusGeometry(0.10, 0.022, 6, 12, Math.PI), 0, 1.96, 0.335, 1, 1, 1, 0, 0, Math.PI), '#141a33', 'Head')); // senyum
   // Lencana peran di dada
   parts.push(part(xform(new THREE.CircleGeometry(0.07, 12), 0.17, 1.55, 0.315), spec.busy ? '#22c55e' : '#94a3b8', 'Spine'));
   for (const s of [-1, 1]) {
@@ -178,7 +180,7 @@ export function buildCharacter(spec) {
     parts.push(part(xform(new THREE.SphereGeometry(0.13, 10, 8), s * 0.16, 0.10, 0.05, 1, 0.65, 1.5), '#141a33', SH));
   }
   for (const { g, j } of accessoryGeo(spec.accessory))
-    parts.push(part(g, outfit, j));
+    parts.push(part(g, light, j));
 
   const bones = {};
   for (const name of BONES) {

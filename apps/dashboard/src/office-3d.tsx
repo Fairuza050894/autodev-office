@@ -1,629 +1,305 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Billboard, ContactShadows, Html, Sparkles, useGLTF } from '@react-three/drei';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import { parseRow, type Row } from '@autodev/ui';
 import { isBusyAgent, officeFloors, roomOfAgent } from './office-data';
 import { animFor, charEntry } from './character-manifest';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
-function textSprite(text: string, accent = '#a5b4fc', scale = 1): THREE.Sprite {
-  const c = document.createElement('canvas');
-  c.width = 512; c.height = 128;
-  const g = c.getContext('2d')!;
-  g.fillStyle = 'rgba(10,15,35,0.82)';
-  g.beginPath();
-  (g as CanvasRenderingContext2D & { roundRect: (...a: number[]) => void }).roundRect(4, 20, 504, 88, 18);
-  g.fill();
-  g.strokeStyle = accent;
-  g.lineWidth = 3;
-  g.stroke();
-  g.fillStyle = '#eef1ff';
-  g.font = '600 44px Inter, system-ui, sans-serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(text.slice(0, 18), 256, 66);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true });
-  const sp = new THREE.Sprite(mat);
-  sp.scale.set(5.4 * scale, 1.35 * scale, 1);
-  return sp;
+const FW = 32, FD = 22, GAP = 10.5;
+const HELI = { y: 12, r: 70, phi: 0.92, theta: 0.75 };
+const floorCols = ['#f59e0b', '#22d3ee', '#c084fc'];
+const ROOM_ICON: Record<string,string> = { RECEPTION:'◉', 'PM ROOM':'✦', 'BA & PO':'▤', 'DESIGN STUDIO':'✎', ARCHITECTURE:'⌂', 'DEV FLOOR':'⌨', 'QA LAB':'🧪', SECURITY:'🛡', 'DEVOPS / SERVER':'🖥', 'RELEASE DESK':'🚀', LIBRARY:'📚', PANTRY:'☕', 'GAME ROOM':'🎮', 'REST ROOM':'💤', GYM:'🏋', 'ROOFTOP LOUNGE':'🌙' };
+interface NavState { theta: number; phi: number; r: number; gr: number; gp: number; lx: number; ly: number; moved: number }
+export const ROOM_SPOTS: Record<string, [number, number, number]> = {
+  RECEPTION: [0, 0.6, 0.4], 'PM ROOM': [0, 0.6, -1.2], 'BA & PO': [1.5, 0.6, 0.5],
+  'DESIGN STUDIO': [-1.5, 0.6, 0.5], ARCHITECTURE: [0, 0.6, -0.5], 'DEV FLOOR': [-1.2, 0.6, 0.8],
+  'QA LAB': [1.2, 0.6, -0.8], SECURITY: [0, 0.6, 0.5], 'DEVOPS / SERVER': [-1.5, 0.6, -1],
+  'RELEASE DESK': [1.5, 0.6, 0.8], LIBRARY: [0, 0.6, 1.5], PANTRY: [0.5, 0.6, 1],
+  'GAME ROOM': [-1, 0.6, 0.5], 'REST ROOM': [1, 0.6, 0.5], GYM: [0, 0.6, 0],
+  'ROOFTOP LOUNGE': [0, 0.6, 0],
+};
+function slotPos(room: string, ai: number): [number, number, number] {
+  const base = ROOM_SPOTS[room] ?? [0, 0.6, 0];
+  const s = ai % 4;
+  return [base[0] - 1.6 + (s % 2) * 2.2, base[1], base[2] - 1 + Math.floor(s / 2) * 1.8];
 }
 
-function mat(color: string, emissive = 0, opacity = 1): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color, roughness: 0.65, metalness: 0.2,
-    emissive, emissiveIntensity: emissive ? 0.85 : 0,
-    transparent: opacity < 1, opacity,
+// Monitor: layar emissive + log nyata (Html) + cursor blink + scroll
+function DeskMonitor({ log, accent = '#8ea2ff' }: { log: string; accent?: string }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick(v => v + 1), 1200); return () => clearInterval(t); }, []);
+  const lines = useMemo(() => {
+    const ls = log.split('\n').filter(Boolean).slice(-5);
+    return ls.length ? ls : ['standby — menunggu tugas'];
+  }, [log]);
+  const shown = lines.slice(0, 3 + (tick % 3));
+  return (
+    <group>
+      <mesh position={[-0.4, 1.75, -0.3]} castShadow>
+        <boxGeometry args={[1.4, 0.9, 0.1]} />
+        <meshStandardMaterial color="#0b1020" emissive={0x2a3fd4} emissiveIntensity={0.9} />
+      </mesh>
+      <mesh position={[-0.4, 1.75, -0.24]}>
+        <planeGeometry args={[1.2, 0.7]} />
+        <meshBasicMaterial color={accent} transparent opacity={0.55} />
+      </mesh>
+      <Html position={[-0.4, 1.78, -0.22]} transform occlude="blending" distanceFactor={8} style={{ pointerEvents: 'none' }}>
+        <div style={{ width: 150, fontSize: 9, fontFamily: 'monospace', color: '#c7d2fe', background: 'rgba(5,8,20,.78)', padding: '4px 6px', borderRadius: 4, lineHeight: 1.35 }}>
+          {shown.map((l, i) => <div key={i} style={{ opacity: 0.45 + (0.55 * (i + 1)) / shown.length, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{l.slice(0, 26)}</div>)}
+          <span style={{ animation: 'blink 1s steps(2) infinite' }}>▊</span>
+        </div>
+      </Html>
+    </group>
+  );
+}
+
+// Furniture nyata per ruangan (JSX, tanpa helper box()/mat() lama)
+function Desk({ color = '#46538c', log = '', accent }: { color?: string; log?: string; accent?: string }) {
+  return (
+    <group>
+      <mesh position={[0, 1.05, 0]} castShadow receiveShadow><boxGeometry args={[3.4, 0.22, 1.7]} /><meshStandardMaterial color="#46538c" roughness={0.65} /></mesh>
+      {[[-1.5], [1.5]].map(([x]) => <mesh key={x} position={[x, 0.5, 0]} castShadow><boxGeometry args={[0.18, 1.0, 1.4]} /><meshStandardMaterial color="#232c52" roughness={0.7} /></mesh>)}
+      <DeskMonitor log={log} accent={accent} />
+      <mesh position={[-0.4, 1.2, 0.5]}><boxGeometry args={[1.1, 0.08, 0.4]} /><meshStandardMaterial color="#1b2450" /></mesh>
+      <mesh position={[0.3, 0.5, 1.7]} castShadow><boxGeometry args={[0.9, 0.55, 0.9]} /><meshStandardMaterial color={color} roughness={0.6} /></mesh>
+      <mesh position={[0.3, 1.1, 2.05]} castShadow><boxGeometry args={[0.9, 0.8, 0.18]} /><meshStandardMaterial color={color} roughness={0.6} /></mesh>
+    </group>
+  );
+}
+function Furniture({ room, log, accent }: { room: string; log: string; accent: string }) {
+  if (/RECEPTION/.test(room)) return <group><mesh position={[0, 0.5, 0]} castShadow><boxGeometry args={[4.2, 1.0, 0.9]} /><meshStandardMaterial color="#6366f1" /></mesh><group position={[0, 0, 2.8]}><mesh position={[0, 0.35, 0]} castShadow><boxGeometry args={[3.2, 0.7, 1.2]} /><meshStandardMaterial color="#22d3ee" /></mesh></group></group>;
+  if (/PM ROOM|RELEASE/.test(room)) return <group><mesh position={[0, 1, 0]} castShadow receiveShadow><cylinderGeometry args={[1.7, 1.7, 0.22, 20]} /><meshStandardMaterial color="#8b98c4" /></mesh><mesh position={[0, 0.5, 0]}><cylinderGeometry args={[0.25, 0.35, 1, 10]} /><meshStandardMaterial color="#232c52" /></mesh>{[0, 1, 2, 3].map(i => { const a = (i / 4) * Math.PI * 2; return <mesh key={i} position={[Math.cos(a) * 2.6, 0.37, Math.sin(a) * 2.6]} castShadow><boxGeometry args={[0.7, 0.75, 0.7]} /><meshStandardMaterial color="#6366f1" /></mesh>; })}<mesh position={[0, 2.2, -2.9]}><boxGeometry args={[2.4, 1.3, 0.1]} /><meshStandardMaterial color="#e8ddc8" emissive={0x445566} emissiveIntensity={0.5} /></mesh></group>;
+  if (/SERVER|QA|SECURITY|DEVOPS/.test(room)) return <group>{[0, 1].map(i => <group key={i} position={[i * 1.6 - 0.8, 0, 0]}><mesh position={[0, 1.6, 0]} castShadow><boxGeometry args={[1.2, 3.2, 1]} /><meshStandardMaterial color="#1b2450" emissive={0x113366} emissiveIntensity={0.8} /></mesh>{[0, 1, 2, 3].map(l => <mesh key={l} position={[0, 0.7 + l * 0.7, 0.55]}><sphereGeometry args={[0.09, 8, 8]} /><meshBasicMaterial color={l % 2 ? '#22c55e' : '#22d3ee'} /></mesh>)}</group>)}<mesh position={[0, 0.45, 1.8]}><boxGeometry args={[1.8, 0.9, 0.7]} /><meshStandardMaterial color="#46538c" /></mesh><mesh position={[0, 1.3, 1.7]}><boxGeometry args={[1.5, 0.7, 0.08]} /><meshStandardMaterial color="#0b1020" emissive={0x22d3ee} emissiveIntensity={0.9} /></mesh></group>;
+  if (/GYM/.test(room)) return <group><mesh position={[0, 0.45, 0]} castShadow><boxGeometry args={[2.6, 0.45, 0.9]} /><meshStandardMaterial color="#7c3aed" /></mesh><mesh position={[1.8, 0.05, 0]}><boxGeometry args={[1.4, 0.1, 2.6]} /><meshStandardMaterial color="#22c55e" /></mesh>{[0, 1, 2].map(i => <mesh key={i} position={[-1.1, 0.5 + i * 0.35, 0.55]} castShadow><cylinderGeometry args={[0.35, 0.35, 0.12, 14]} /><meshStandardMaterial color={i ? '#f59e0b' : '#6366f1'} /></mesh>)}</group>;
+  if (/PANTRY/.test(room)) return <group><mesh position={[0, 0.5, 0]} castShadow><boxGeometry args={[3.4, 1, 1]} /><meshStandardMaterial color="#8a5a2b" /></mesh><mesh position={[0, 1.05, 0]}><boxGeometry args={[3.6, 0.12, 1.2]} /><meshStandardMaterial color="#e8ddc8" /></mesh></group>;
+  if (/BA & PO|DESIGN|ARCHITECTURE/.test(room)) return <group><Desk log={log} accent={accent} /><group position={[0, 0, -3.4]} rotation-y={Math.PI}><Desk color="#a78bfa" log={log} accent={accent} /></group><mesh position={[-3.4, 2.1, -0.6]} rotation-y={Math.PI / 2}><boxGeometry args={[2.6, 1.4, 0.1]} /><meshStandardMaterial color="#e8ddc8" emissive={0x334455} emissiveIntensity={0.5} /></mesh></group>;
+  return <group><Desk log={log} accent={accent} /><group position={[0, 0, -3.2]} rotation-y={Math.PI}><Desk color="#22d3ee" log={log} accent={accent} /></group></group>;
+}
+
+// Agen GLB rig — useGLTF + useAnimations, crossfade 0.3s, klip dari status
+function Agent({ a, ai, pos, showLabel = true, nav, onSelect }: { a: Row; ai: number; pos: [number, number, number]; showLabel?: boolean; nav: React.MutableRefObject<NavState>; onSelect: (r: Row) => void }) {
+  const entry = charEntry(a, ai);
+  const { scene, animations } = useGLTF(entry.file);
+  const ref = useRef<THREE.Group>(null);
+  const cur = useRef<{ name: string; act: THREE.AnimationAction | null }>({ name: '', act: null });
+  const clip = animFor(a);
+  const model = useMemo(() => {
+    const m = SkeletonUtils.clone(scene);
+    m.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.userData.agent = a; } });
+    return m;
+  }, [scene, a]);
+  const mixer = useMemo(() => new THREE.AnimationMixer(model), [model]);
+  useEffect(() => {
+    const found = animations.find(c => c.name === clip) ?? animations[0];
+    if (!found || cur.current.name === found.name) return;
+    const next = mixer.clipAction(found);
+    next.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.3).play();
+    cur.current.act?.fadeOut(0.3);
+    cur.current = { name: found.name, act: next };
+    return () => { mixer.stopAllAction(); };
+  }, [clip, animations]);
+  const busy = isBusyAgent(a);
+  const breathe = useRef(0);
+  useFrame((st, dt) => {
+    mixer.update(Math.min(dt, 0.05));
+    if (!ref.current) return;
+    const t = st.clock.elapsedTime;
+    ref.current.position.set(pos[0] + Math.sin(t * 0.35 + ai) * 0.5, pos[1], pos[2] + Math.cos(t * 0.28 + ai) * 0.4);
+    if (!busy) { breathe.current += dt; ref.current.scale.setScalar(1 + Math.sin(breathe.current * 1.8 + ai) * 0.012); }
+    else ref.current.scale.setScalar(1);
   });
+  const raw = String((a as Record<string, unknown>).display_name ?? (a as Record<string, unknown>).name ?? (a as Record<string, unknown>).id ?? `agen-${ai}`);
+  const name = raw.replace(' — ', ' · ').replace(' - ', ' · ').slice(0, 22);
+  const st = String((a as Record<string, unknown>).status ?? '').toLowerCase();
+  const ring = st === 'working' || st === 'running' || Boolean((a as Record<string, unknown>).current_task_id) ? '#6366f1' : st === 'blocked' || st === 'failed' ? '#f59e0b' : '#22c55e';
+  return (
+    <group ref={ref} position={pos} rotation-y={(ai * 1.3) % (Math.PI * 2)} userData={{ agent: a }} onClick={e => { e.stopPropagation(); if (nav.current.moved > 6) return; onSelect(a); }}>
+      <primitive object={model} scale={1.6} />
+      {showLabel && <Billboard position={[0, 4.6, 0]}>
+        <Html center zIndexRange={[60, 0]} style={{ pointerEvents: 'none' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', background: 'rgba(10,15,35,.88)', border: `2px solid ${entry.color}`, borderRadius: 12, padding: '3px 10px', whiteSpace: 'nowrap', boxShadow: '0 2px 12px #0008' }}>{name}</div>
+        </Html>
+      </Billboard>}
+      <mesh rotation-x={-Math.PI / 2} position-y={0.08}><torusGeometry args={[1.1, 0.1, 8, 32]} /><meshBasicMaterial color={ring} transparent opacity={0.95} /></mesh>
+      <mesh rotation-x={-Math.PI / 2} position-y={0.02}><circleGeometry args={[0.7, 20]} /><meshBasicMaterial color={0x000000} transparent opacity={0.3} /></mesh>
+    </group>
+  );
 }
 
-function box(w: number, h: number, d: number, color: string, emissive = 0, opacity = 1): THREE.Mesh {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(color, emissive, opacity));
-  m.castShadow = true;
-  m.receiveShadow = true;
-  return m;
-}
-
-function deskSet(color = '#6366f1'): THREE.Group {
-  const g = new THREE.Group();
-  const top = box(3.4, 0.22, 1.7, '#46538c'); top.position.y = 1.05; g.add(top);
-  const legL = box(0.18, 1.0, 1.4, '#232c52'); legL.position.set(-1.5, 0.5, 0); g.add(legL);
-  const legR = box(0.18, 1.0, 1.4, '#232c52'); legR.position.set(1.5, 0.5, 0); g.add(legR);
-  const mon = box(1.4, 0.9, 0.1, '#0b1020', 0x2a3fd4); mon.position.set(-0.4, 1.75, -0.3); g.add(mon);
-  const glow = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.7), new THREE.MeshBasicMaterial({ color: 0x8ea2ff, transparent: true, opacity: 0.55 }));
-  glow.position.set(-0.4, 1.75, -0.24); g.add(glow);
-  const kb = box(1.1, 0.08, 0.4, '#1b2450'); kb.position.set(-0.4, 1.2, 0.5); g.add(kb);
-  const chair = box(0.9, 0.55, 0.9, color); chair.position.set(0.3, 0.5, 1.7); g.add(chair);
-  const chairBack = box(0.9, 0.8, 0.18, color); chairBack.position.set(0.3, 1.1, 2.05); g.add(chairBack);
-  return g;
-}
-
-function loungeSet(color = '#22d3ee'): THREE.Group {
-  const g = new THREE.Group();
-  const sofa = box(3.2, 0.7, 1.2, color); sofa.position.y = 0.35; g.add(sofa);
-  const back = box(3.2, 0.85, 0.32, color); back.position.set(0, 1.0, -0.55); g.add(back);
-  const armL = box(0.32, 0.7, 1.2, color); armL.position.set(-1.6, 0.7, 0); g.add(armL);
-  const armR = box(0.32, 0.7, 1.2, color); armR.position.set(1.6, 0.7, 0); g.add(armR);
-  const table = box(1.6, 0.12, 0.9, '#8b98c4'); table.position.set(0, 0.5, 1.4); g.add(table);
-  const tleg = box(1.2, 0.45, 0.6, '#232c52'); tleg.position.set(0, 0.22, 1.4); g.add(tleg);
-  const rug = new THREE.Mesh(new THREE.CircleGeometry(2.2, 24), mat('#1c2653'));
-  rug.rotation.x = -Math.PI / 2; rug.position.set(0, 0.03, 1.0); rug.receiveShadow = true; g.add(rug);
-  return g;
-}
-
-function rackSet(): THREE.Group {
-  const g = new THREE.Group();
-  for (let i = 0; i < 2; i++) {
-    const rack = box(1.2, 3.2, 1.0, '#1b2450', 0x113366);
-    rack.position.set(i * 1.6 - 0.8, 1.6, 0);
-    g.add(rack);
-    for (let l = 0; l < 4; l++) {
-      const led = new THREE.Mesh(
-        new THREE.SphereGeometry(0.09, 8, 8),
-        new THREE.MeshBasicMaterial({ color: l % 2 ? '#22c55e' : '#22d3ee' }),
-      );
-      led.position.set(i * 1.6 - 0.8, 0.7 + l * 0.7, 0.55);
-      led.userData.blink = true;
-      g.add(led);
+// Partikel handoff: paket dokumen (titik cahaya) melayang antar agen yang sedang bekerja
+function HandoffPaths({ agents }: { agents: Row[] }) {
+  const busy = agents.map((a, ai) => ({ a, ai })).filter(({ a }) => isBusyAgent(a)).slice(0, 8);
+  const paths = useMemo(() => {
+    const out: { pts: THREE.Vector3[]; curve: THREE.CatmullRomCurve3 }[] = [];
+    for (let i = 0; i + 1 < busy.length; i += 2) {
+      const p1 = agentWorldPos(busy[i].a, busy[i].ai), p2 = agentWorldPos(busy[i + 1].a, busy[i + 1].ai);
+      const mid = p1.clone().add(p2).multiplyScalar(0.5).add(new THREE.Vector3(0, 3, 0));
+      out.push({ pts: [p1, mid, p2], curve: new THREE.CatmullRomCurve3([p1, mid, p2]) });
     }
+    return out;
+  }, [agents.map(a => String(a.id) + String(a.status)).join(',')]);
+  const dots = useRef<(THREE.Mesh | null)[]>([]);
+  useFrame(st => {
+    const t = st.clock.elapsedTime;
+    paths.forEach((p, i) => {
+      const m = dots.current[i];
+      if (!m) return;
+      m.position.copy(p.curve.getPoint((t * 0.15 + i * 0.33) % 1));
+    });
+  });
+  return (
+    <group>
+      {paths.map((p, i) => { const g = new THREE.BufferGeometry().setFromPoints(p.curve.getPoints(24)); return <lineSegments key={i} geometry={g}><lineBasicMaterial color="#22d3ee" transparent opacity={0.5} /></lineSegments>; })}
+      {paths.map((p, i) => <mesh key={`d${i}`} ref={el => { dots.current[i] = el; }}><sphereGeometry args={[0.22, 10, 10]} /><meshBasicMaterial color="#e8ddc8" /></mesh>)}
+    </group>
+  );
+}
+function agentWorldPos(a: Row, ai: number): THREE.Vector3 {
+  let acc = 0, fi = 0, ri = 0;
+  const gi = roomOfAgent(a, ai);
+  for (let f = 0; f < officeFloors.length; f++) {
+    if (gi < acc + officeFloors[f].rooms.length) { fi = f; ri = gi - acc; break; }
+    acc += officeFloors[f].rooms.length;
   }
-  const console_ = box(1.8, 0.9, 0.7, '#46538c'); console_.position.set(0, 0.45, 1.8); g.add(console_);
-  const scr = box(1.5, 0.7, 0.08, '#0b1020', 0x22d3ee); scr.position.set(0, 1.3, 1.7); g.add(scr);
-  return g;
+  const cols = 3, cw = FW / cols, rows = Math.ceil(officeFloors[fi].rooms.length / cols), cd = FD / rows;
+  const cx = -FW / 2 + (ri % cols) * cw + cw / 2, cz = -FD / 2 + Math.floor(ri / cols) * cd + cd / 2;
+  const fl = officeFloors[fi].rooms[ri];
+  const [lx, , lz] = slotPos(fl?.name ?? '', ai);
+  return new THREE.Vector3(cx + lx, fi * GAP + 2, cz + lz);
 }
 
-function gymSet(): THREE.Group {
-  const g = new THREE.Group();
-  const bench = box(2.6, 0.45, 0.9, '#7c3aed'); bench.position.y = 0.45; g.add(bench);
-  const rack = box(0.35, 1.6, 0.9, '#46538c'); rack.position.set(-1.1, 0.8, 0); g.add(rack);
-  const matt = box(1.4, 0.1, 2.6, '#22c55e'); matt.position.set(1.8, 0.05, 0); g.add(matt);
-  for (let i = 0; i < 3; i++) {
-    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.12, 14), mat(i ? '#f59e0b' : '#6366f1'));
-    plate.position.set(-1.1, 0.5 + i * 0.35, 0.55); plate.castShadow = true; g.add(plate);
-  }
-  return g;
+// Satu ruangan: slab + furniture + papan nama + agen; hover menyala + ringkasan
+function Room({ room, cx, cz, cw, cd, fi, occ, log, dim, focusAll, nav, onSelect }: { room: { name: string }; cx: number; cz: number; cw: number; cd: number; fi: number; occ: { a: Row; ai: number }[]; log: string; dim: boolean; focusAll: boolean; nav: React.MutableRefObject<NavState>; onSelect: (r: Row) => void }) {
+  const [hover, setHover] = useState(false);
+  const active = occ.some(({ a }) => isBusyAgent(a));
+  return (
+    <group position={[cx, 0.5, cz]} onPointerOver={e => { e.stopPropagation(); setHover(true); }} onPointerOut={() => setHover(false)}>
+      <mesh position-y={0} receiveShadow><boxGeometry args={[cw - 0.7, 0.25, cd - 0.7]} /><meshStandardMaterial color={hover ? '#3d4ea8' : active ? '#2c3c82' : '#202a5c'} emissive={hover ? 0x2a3fd4 : active ? 0x1a2a88 : 0} emissiveIntensity={hover ? 1.1 : active ? 0.85 : 0} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>
+      <mesh position={[0, 1.2, -cd / 2 + 0.5]} castShadow><boxGeometry args={[cw - 0.7, 2.5, 0.28]} /><meshStandardMaterial color={active ? 0x6d7bff : 0x39447c} roughness={0.75} transparent opacity={dim ? 0.14 : 0.92} /></mesh>
+      <mesh position={[-cw / 2 + 0.5, 1.2, 0]} castShadow><boxGeometry args={[0.28, 2.5, cd - 0.7]} /><meshStandardMaterial color={active ? 0x6d7bff : 0x39447c} roughness={0.75} transparent opacity={dim ? 0.14 : 0.92} /></mesh>
+      <mesh position={[0, 1.0, cd / 2 - 0.5]}><boxGeometry args={[cw - 0.7, 1.9, 0.12]} /><meshStandardMaterial color={0x93c5fd} roughness={0.15} metalness={0.4} transparent opacity={dim ? 0.14 : 0.22} /></mesh>
+      <group position={[0, 0.1, 0.4]}><Furniture room={room.name} log={log} accent={floorCols[fi]} /></group>
+      {(hover || !focusAll) && <Billboard position={[0, 3.6, 0]}>
+        <Html center zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: active ? '#fff7ed' : '#eef1ff', background: 'rgba(10,15,35,.88)', border: `2px solid ${active ? '#fdba74' : floorCols[fi]}`, borderRadius: 9, padding: '3px 9px', whiteSpace: 'nowrap', boxShadow: '0 2px 12px #0008' }}>{`${ROOM_ICON[room.name] ?? '▦'} ${room.name}${hover && occ.length ? ` · ${occ.length} agen` : ''}`}</div>
+        </Html>
+      </Billboard>}
+      {occ.map(({ a, ai }) => { const [lx, _ly, lz] = slotPos(room.name, ai); return <Agent key={String(a.id)} a={a} ai={ai} pos={[lx, 0.62, lz]} showLabel={!focusAll} nav={nav} onSelect={onSelect} />; })}
+    </group>
+  );
 }
 
-function pantrySet(): THREE.Group {
-  const g = new THREE.Group();
-  const counter = box(3.4, 1.0, 1.0, '#8a5a2b'); counter.position.y = 0.5; g.add(counter);
-  const top = box(3.6, 0.12, 1.2, '#e8ddc8'); top.position.y = 1.05; g.add(top);
-  const shelf = box(3.0, 0.12, 0.6, '#46538c'); shelf.position.set(0, 2.2, -0.8); g.add(shelf);
-  for (let i = 0; i < 4; i++) {
-    const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.4, 10), mat(i % 2 ? '#22d3ee' : '#f59e0b'));
-    jar.position.set(-1.1 + i * 0.75, 2.45, -0.8); jar.castShadow = true; g.add(jar);
-  }
-  const table = box(2.2, 0.16, 2.2, '#8b98c4'); table.position.set(0, 0.9, 2.4); g.add(table);
-  const tleg = box(0.3, 0.85, 0.3, '#232c52'); tleg.position.set(0, 0.45, 2.4); g.add(tleg);
-  for (const [dx, dz] of [[-1.5, 2.4], [1.5, 2.4], [0, 3.6]] as const) {
-    const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.85, 12), mat('#22d3ee'));
-    stool.position.set(dx, 0.42, dz);
-    stool.castShadow = true;
-    g.add(stool);
-  }
-  return g;
+// Satu lantai: slab + ruangan + agen
+function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number; agents: { a: Row; ai: number }[]; logs: Map<string, string>; onSelect: (r: Row) => void; dim: boolean; focusAll: boolean; nav: React.MutableRefObject<NavState> }) {
+  const fl = officeFloors[fi];
+  const baseY = fi * GAP;
+  const cols = 3, cw = FW / cols, rows = Math.ceil(fl.rooms.length / cols), cd = FD / rows;
+  return (
+    <group position-y={baseY}>
+      <mesh position-y={0} receiveShadow><boxGeometry args={[FW + 2.5, 0.7, FD + 2.5]} /><meshStandardMaterial color="#1a2350" roughness={0.65} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>
+      <mesh position-y={0.42}><boxGeometry args={[FW + 2.6, 0.18, FD + 2.6]} /><meshStandardMaterial color={floorCols[fi]} emissive={floorCols[fi]} emissiveIntensity={0.35} roughness={0.6} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>
+      {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => <mesh key={`${sx}${sz}`} position={[sx * (FW / 2 + 0.6), 2.6, sz * (FD / 2 + 0.6)]} castShadow><cylinderGeometry args={[0.4, 0.45, 4.6, 10]} /><meshStandardMaterial color="#2b3768" /></mesh>)}
+      <pointLight position={[0, 6.5, 0]} color={floorCols[fi]} intensity={14} distance={34} decay={1.8} />
+      {fl.rooms.map((room, ri) => {
+        const col = ri % cols, row = Math.floor(ri / cols);
+        const cx = -FW / 2 + col * cw + cw / 2, cz = -FD / 2 + row * cd + cd / 2;
+        const start = officeFloors.slice(0, fi).reduce((n, f) => n + f.rooms.length, 0);
+        const occ = agents.filter(({ a, ai }) => roomOfAgent(a, ai) - start === ri);
+        const log = occ.map(({ a }) => logs.get(String(a.id)) ?? '').filter(Boolean).join('\n');
+        return <Room key={room.name} room={room} cx={cx} cz={cz} cw={cw} cd={cd} fi={fi} occ={occ} log={log} dim={dim} focusAll={focusAll} nav={nav} onSelect={onSelect} />;
+      })}
+      {focusAll && <Billboard position={[-FW / 2 - 6.5, 2.6, 0]}>
+        <Html center zIndexRange={[50, 0]} style={{ pointerEvents: 'none' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#eef1ff', background: 'rgba(10,15,35,.82)', border: `2px solid ${floorCols[fi]}`, borderRadius: 9, padding: '3px 10px', whiteSpace: 'nowrap' }}>{fl.name.toUpperCase()}</div>
+        </Html>
+      </Billboard>}
+    </group>
+  );
 }
 
-function plant(x = 0, z = 0, s = 1): THREE.Group {
-  const g = new THREE.Group();
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.35 * s, 0.28 * s, 0.5 * s, 10), mat('#b45309'));
-  pot.position.y = 0.25 * s; pot.castShadow = true; g.add(pot);
-  const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55 * s, 1), mat('#22c55e'));
-  leaf.position.y = 1.0 * s; leaf.castShadow = true; g.add(leaf);
-  const leaf2 = new THREE.Mesh(new THREE.IcosahedronGeometry(0.38 * s, 1), mat('#4ade80'));
-  leaf2.position.set(0.25 * s, 1.35 * s, 0.1); leaf2.castShadow = true; g.add(leaf2);
-  g.position.set(x, 0, z);
-  return g;
-}
-
-function tree(x: number, z: number, s = 1): THREE.Group {
-  const g = new THREE.Group();
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.28 * s, 0.36 * s, 2.2 * s, 8), mat('#7c4a21'));
-  trunk.position.y = 1.1 * s; trunk.castShadow = true; g.add(trunk);
-  const c1 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.5 * s, 1), mat('#15803d'));
-  c1.position.y = 2.9 * s; c1.castShadow = true; g.add(c1);
-  const c2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.0 * s, 1), mat('#22c55e'));
-  c2.position.set(0.6 * s, 3.6 * s, 0.3); c2.castShadow = true; g.add(c2);
-  g.position.set(x, 0, z);
-  return g;
-}
-
-function lampPost(x: number, z: number): THREE.Group {
-  const g = new THREE.Group();
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 4.4, 8), mat('#3b4670'));
-  pole.position.y = 2.2; pole.castShadow = true; g.add(pole);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
-  bulb.position.y = 4.5; g.add(bulb);
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.22 }));
-  halo.position.y = 4.5; g.add(halo);
-  g.position.set(x, 0, z);
-  return g;
-}
-
-function furnitureFor(room: string): THREE.Group {
-  if (/RECEPTION/.test(room)) { const g = new THREE.Group(); const c = box(4.2, 1.0, 0.9, '#6366f1'); c.position.y = 0.5; g.add(c); const s = loungeSet(); s.position.set(0, 0, 2.8); g.add(s); const p = plant(3.4, 2.6); g.add(p); return g; }
-  if (/PM ROOM|RELEASE/.test(room)) { const g = new THREE.Group(); const t = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 1.7, 0.22, 20), mat('#8b98c4')); t.position.y = 1.0; t.castShadow = true; t.receiveShadow = true; g.add(t); const tleg = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 1.0, 10), mat('#232c52')); tleg.position.y = 0.5; g.add(tleg); for (let i = 0; i < 4; i++) { const ch = box(0.7, 0.75, 0.7, '#6366f1'); const a = (i / 4) * Math.PI * 2; ch.position.set(Math.cos(a) * 2.6, 0.37, Math.sin(a) * 2.6); g.add(ch); } const board = box(2.4, 1.3, 0.1, '#e8ddc8', 0x445566); board.position.set(0, 2.2, -2.9); g.add(board); return g; }
-  if (/SERVER|QA|SECURITY|DEVOPS/.test(room)) return rackSet();
-  if (/GYM/.test(room)) return gymSet();
-  if (/PANTRY/.test(room)) return pantrySet();
-  if (/BA & PO|DESIGN|ARCHITECTURE/.test(room)) { const g = new THREE.Group(); const d1 = deskSet('#22d3ee'); g.add(d1); const d2 = deskSet('#a78bfa'); d2.position.set(0, 0, -3.4); d2.rotation.y = Math.PI; g.add(d2); const wb = box(2.6, 1.4, 0.1, '#e8ddc8', 0x334455); wb.position.set(-3.4, 2.1, -0.6); wb.rotation.y = Math.PI / 2; g.add(wb); g.add(plant(3.8, -2.4, 0.9)); return g; }
-  if (/ROOFTOP|GAME|REST|LIBRARY/.test(room)) { const g = new THREE.Group(); const l = loungeSet(room.includes('GAME') ? '#a78bfa' : '#22d3ee'); g.add(l); g.add(plant(-3.6, 1.8, 1.1)); g.add(plant(3.6, 1.8, 0.9)); if (/LIBRARY/.test(room)) { for (let i = 0; i < 2; i++) { const sh = box(1.6, 2.4, 0.5, '#7c4a21'); sh.position.set(-1.2 + i * 2.4, 1.2, -3.0); g.add(sh); for (let b = 0; b < 3; b++) { const bk = box(1.4, 0.28, 0.35, i ? '#22d3ee' : '#f59e0b'); bk.position.set(-1.2 + i * 2.4, 0.6 + b * 0.65, -2.95); g.add(bk); } } } return g; }
-  const g = deskSet();
-  const extra = deskSet('#22d3ee');
-  extra.position.set(0, 0, -3.2); extra.rotation.y = Math.PI;
-  g.add(extra);
-  return g;
+// Kontrol kamera: fokus lantai + reset + putar otomatis
+function CamRig({ focus, resetToken, spin, dragging, nav }: { focus: number; resetToken: number; spin: boolean; dragging: React.MutableRefObject<boolean>; nav: React.MutableRefObject<NavState> }) {
+  const { camera } = useThree();
+  const st = useRef({ tx: new THREE.Vector3(0, HELI.y, 0), lastF: -99, lastR: -1 });
+  useEffect(() => { st.current.lastF = -99; }, [focus]);
+  useFrame((_, dt) => {
+    const s = st.current, n = nav.current;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (focus !== s.lastF) {
+      s.lastF = focus;
+      s.tx.set(0, focus < 0 ? HELI.y : focus * GAP + 2.5, 0);
+    }
+    n.gr = focus < 0 ? HELI.r : 34; n.gp = focus < 0 ? HELI.phi : 1.12;
+    n.r += (n.gr - n.r) * Math.min(1, dt * 4);
+    n.phi += (n.gp - n.phi) * Math.min(1, dt * 4);
+    if (resetToken !== s.lastR) { s.lastR = resetToken; n.theta = HELI.theta; n.gr = n.r = HELI.r; n.gp = n.phi = HELI.phi; s.tx.set(0, HELI.y, 0); }
+    if (spin && !reduced && !dragging.current) n.theta += dt * 0.1;
+    camera.position.set(s.tx.x + n.r * Math.sin(n.phi) * Math.sin(n.theta), s.tx.y + n.r * Math.cos(n.phi), s.tx.z + n.r * Math.sin(n.phi) * Math.cos(n.theta));
+    camera.lookAt(s.tx);
+  });
+  return null;
 }
 
 export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, resetToken = 0, spin = true }: { agents: Row[]; tasks: Row[]; onSelect: (r: Row) => void; focusFloor?: number; resetToken?: number; spin?: boolean }) {
-  const host = useRef<HTMLDivElement>(null);
-  const select = useRef(onSelect);
-  select.current = onSelect;
-  const focusRef = useRef(focusFloor);
-  focusRef.current = focusFloor;
-  const resetRef = useRef(resetToken);
-  resetRef.current = resetToken;
-  const spinRef = useRef(spin);
-  spinRef.current = spin;
-  const state = useRef({ agents, tasks });
-  state.current = { agents, tasks };
-
+  const dragging = useRef(false);
+  const nav = useRef<NavState>({ theta: HELI.theta, phi: HELI.phi, r: HELI.r, gr: HELI.r, gp: HELI.phi, lx: 0, ly: 0, moved: 0 });
+  const [webgl, setWebgl] = useState(true);
   useEffect(() => {
-    const el = host.current;
-    if (!el) return;
-    let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    } catch {
-      el.innerHTML = '<p class="muted">WebGL tidak tersedia di perangkat ini — gunakan denah 2D.</p>';
-      return;
-    }
-    const small = el.clientWidth < 720;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, small ? 1.5 : 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
-    el.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x0b1020, 95, 230);
-    const camera = new THREE.PerspectiveCamera(44, 1, 0.1, 600);
-
-    scene.add(new THREE.HemisphereLight(0xcdd8ff, 0x1a2040, 0.85));
-    try {
-      const pmrem = new THREE.PMREMGenerator(renderer);
-      scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.06).texture;
-      pmrem.dispose();
-    } catch { /* tanpa HDRI bila gagal */ }
-    const sun = new THREE.DirectionalLight(0xffffff, 1.7);
-    sun.position.set(30, 58, 25);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.left = -48; sun.shadow.camera.right = 48;
-    sun.shadow.camera.top = 48; sun.shadow.camera.bottom = -48;
-    sun.shadow.bias = -0.0004;
-    sun.shadow.normalBias = 0.02;
-    scene.add(sun);
-    const fill = new THREE.DirectionalLight(0x22d3ee, 0.4);
-    fill.position.set(-28, 22, -30);
-    scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xa78bfa, 0.35);
-    rim.position.set(0, 18, 45);
-    scene.add(rim);
-
-    // Plaza tanah: tanah + jalan lingkar + jalur + pohon + lampu
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(78, 56), mat('#0d1430'));
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -1.3;
-    ground.receiveShadow = true;
-    scene.add(ground);
-    const road = new THREE.Mesh(new THREE.RingGeometry(40, 48, 56), mat('#141c3d'));
-    road.rotation.x = -Math.PI / 2; road.position.y = -1.22; road.receiveShadow = true;
-    scene.add(road);
-    const plaza = box(46, 0.35, 34, '#18224a');
-    plaza.position.y = -1.05; plaza.receiveShadow = true;
-    scene.add(plaza);
-    const walkway = box(6, 0.4, 30, '#232f63');
-    walkway.position.set(0, -1.02, 28); scene.add(walkway);
-    [[-30, -18], [30, -18], [-30, 18], [30, 18], [-42, 0], [42, 0]].forEach(([x, z], i) => scene.add(tree(x, z, 0.9 + (i % 3) * 0.25)));
-    [[-22, 12], [22, 12], [-22, -12], [22, -12]].forEach(([x, z]) => scene.add(lampPost(x, z)));
-
-    const building = new THREE.Group();
-    scene.add(building);
-    const floorGroups: THREE.Group[] = [];
-    const blinkers: THREE.Object3D[] = [];
-    interface Rig { g: THREE.Group; base: THREE.Vector3; phase: number; mixer: THREE.AnimationMixer; clips: Map<string, THREE.AnimationClip>; cur: string; act: THREE.AnimationAction | null; agent: Row; label: THREE.Sprite }
-    const rigs: Rig[] = [];
-    const pickables: THREE.Object3D[] = [];
-
-    const FW = 32, FD = 22, GAP = 10.5;
-    const floorCols = ['#6366f1', '#22d3ee', '#a78bfa'];
-    // Peta hunian: flatIndex -> agents
-    const byRoom = new Map<number, number[]>();
-    state.current.agents.forEach((a, ai) => {
-      const gi = roomOfAgent(a, ai);
-      if (!byRoom.has(gi)) byRoom.set(gi, []);
-      byRoom.get(gi)!.push(ai);
-    });
-    const labels: THREE.Sprite[] = [];
-    const roomLabels: THREE.Sprite[][] = [];
-    const floorTags: THREE.Sprite[] = [];
-    let flatBase = 0;
-    officeFloors.forEach((fl, fi) => {
-      const baseY = fi * GAP;
-      const fg = new THREE.Group();
-      building.add(fg);
-      floorGroups.push(fg);
-      const slab = box(FW + 2.5, 0.7, FD + 2.5, '#1a2350');
-      slab.position.y = baseY;
-      fg.add(slab);
-      const edge = new THREE.Mesh(
-        new THREE.BoxGeometry(FW + 2.6, 0.18, FD + 2.6),
-        new THREE.MeshStandardMaterial({ color: floorCols[fi], emissive: floorCols[fi], emissiveIntensity: 0.35, roughness: 0.6 }),
-      );
-      edge.position.y = baseY + 0.42;
-      edge.receiveShadow = true;
-      fg.add(edge);
-      // Kolom sudut + lampu gantung per lantai
-      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
-        const col = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.45, 4.6, 10), mat('#2b3768'));
-        col.position.set(sx * (FW / 2 + 0.6), baseY + 2.6, sz * (FD / 2 + 0.6));
-        col.castShadow = true;
-        fg.add(col);
-      }
-      const pl = new THREE.PointLight(floorCols[fi], 14, 34, 1.8);
-      pl.position.set(0, baseY + 6.5, 0);
-      fg.add(pl);
-      const cols = 3, cw = FW / cols, rows = Math.ceil(fl.rooms.length / cols), cd = FD / rows;
-      fl.rooms.forEach((room, ri) => {
-        const flat = flatBase + ri;
-        const occ = (byRoom.get(flat) ?? []).map(ai => state.current.agents[ai]);
-        const active = occ.some(isBusyAgent);
-        const col = ri % cols, row = Math.floor(ri / cols);
-        const cx = -FW / 2 + col * cw + cw / 2, cz = -FD / 2 + row * cd + cd / 2;
-        const tile = box(cw - 0.7, 0.25, cd - 0.7, active ? '#2c3c82' : '#202a5c', active ? 0x1a2a88 : 0);
-        tile.position.set(cx, baseY + 0.5, cz);
-        fg.add(tile);
-        const wallMat = new THREE.MeshStandardMaterial({ color: active ? 0x6d7bff : 0x39447c, roughness: 0.75, transparent: true, opacity: 0.92 });
-        const back = new THREE.Mesh(new THREE.BoxGeometry(cw - 0.7, 2.5, 0.28), wallMat);
-        back.position.set(cx, baseY + 1.7, cz - cd / 2 + 0.5);
-        back.castShadow = true;
-        fg.add(back);
-        const side = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.5, cd - 0.7), wallMat);
-        side.position.set(cx - cw / 2 + 0.5, baseY + 1.7, cz);
-        side.castShadow = true;
-        fg.add(side);
-        // Dinding kaca depan: kesan kantor modern
-        const glass = new THREE.Mesh(new THREE.BoxGeometry(cw - 0.7, 1.9, 0.12), new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.15, metalness: 0.4, transparent: true, opacity: 0.22 }));
-        glass.position.set(cx, baseY + 1.5, cz + cd / 2 - 0.5);
-        fg.add(glass);
-        const mullion = box(cw - 0.7, 0.14, 0.16, '#8b98c4');
-        mullion.position.set(cx, baseY + 2.45, cz + cd / 2 - 0.5);
-        fg.add(mullion);
-        // Lampu gantung + bola cahaya
-        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), new THREE.MeshBasicMaterial({ color: active ? 0x22d3ee : 0xffe9a8 }));
-        bulb.position.set(cx, baseY + 4.3, cz);
-        fg.add(bulb);
-        const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.6, 6), mat('#232c52'));
-        cord.position.set(cx, baseY + 5.2, cz);
-        fg.add(cord);
-        const furn = furnitureFor(room.name);
-        furn.position.set(cx, baseY + 0.6, cz + 0.4);
-        fg.add(furn);
-        furn.traverse(o => { if ((o as THREE.Mesh).userData.blink) blinkers.push(o); });
-        const label = textSprite(room.name, active ? '#22d3ee' : floorCols[fi]);
-        label.position.set(cx, baseY + 4.2, cz);
-        fg.add(label);
-        labels.push(label);
-        (roomLabels[fi] ??= []).push(label);
-      });
-      const tag = textSprite(fl.name.toUpperCase(), floorCols[fi], 0.85);
-      tag.position.set(-FW / 2 - 7.2, baseY + 2.6, 0);
-      fg.add(tag);
-      labels.push(tag);
-      floorTags.push(tag);
-      flatBase += fl.rooms.length;
-    });
-    // Inti tangga/lift + atap
-    const totalH = (officeFloors.length - 1) * GAP;
-    const shaft = box(4.4, totalH + 5, 4.4, '#232c52');
-    shaft.position.set(FW / 2 + 4.2, totalH / 2 + 1.5, -FD / 2 - 1.5);
-    building.add(shaft);
-    const shaftGlass = new THREE.Mesh(new THREE.BoxGeometry(4.5, totalH + 4, 0.3), new THREE.MeshStandardMaterial({ color: 0x22d3ee, emissive: 0x22d3ee, emissiveIntensity: 0.5, transparent: true, opacity: 0.35 }));
-    shaftGlass.position.set(FW / 2 + 4.2, totalH / 2 + 1.5, -FD / 2 + 0.9);
-    building.add(shaftGlass);
-    const roof = box(FW + 3.5, 0.25, FD + 3.5, '#93c5fd', 0, 0.12);
-    roof.position.y = totalH + 5.6;
-    roof.castShadow = false;
-    building.add(roof);
-    const roofFrame = new THREE.Mesh(new THREE.BoxGeometry(FW + 3.6, 0.35, 0.35), mat('#2b3768'));
-    roofFrame.position.set(0, totalH + 5.6, FD / 2 + 1.6); building.add(roofFrame);
-    const roofFrame2 = roofFrame.clone(); roofFrame2.position.z = -FD / 2 - 1.6; building.add(roofFrame2);
-    const parapet = box(FW + 3.5, 1.0, 0.3, '#2b3768');
-    parapet.position.set(0, totalH + 6.3, FD / 2 + 1.6);
-    building.add(parapet);
-    const parapet2 = parapet.clone(); parapet2.position.z = -FD / 2 - 1.6; building.add(parapet2);
-    const roofGarden = plant(-8, totalH + 5.9, 1.3); building.add(roofGarden);
-    const roofGarden2 = plant(8, totalH + 5.9, 1.1); building.add(roofGarden2);
-
-    // Debu/partikel melayang: kesan hidup
-    const DUST = 130;
-    const dustPos = new Float32Array(DUST * 3);
-    const dustSeed = new Float32Array(DUST);
-    for (let i = 0; i < DUST; i++) {
-      dustPos[i * 3] = (Math.random() - 0.5) * 70;
-      dustPos[i * 3 + 1] = Math.random() * (totalH + 14) - 1;
-      dustPos[i * 3 + 2] = (Math.random() - 0.5) * 55;
-      dustSeed[i] = Math.random() * 10;
-    }
-    const dustGeo = new THREE.BufferGeometry();
-    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
-    const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0x8ea2ff, size: 0.28, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
-    dust.userData.noDim = true;
-    scene.add(dust);
-
-    const detailOf = (a: Row) => parseRow({ ...a, current_task: a.current_task || state.current.tasks.find(t => t.id === a.current_task_id) });
-    const glbLoader = new GLTFLoader();
-    // Placeholder: bayangan + label nama (bukan karakter) — diganti model .glb saat load selesai
-    const spawnPlaceholder = (a: Row, ai: number) => {
-      let fi = 0, ri = 0, acc = 0;
-      const gi = roomOfAgent(a, ai);
-      for (let f = 0; f < officeFloors.length; f++) {
-        if (gi < acc + officeFloors[f].rooms.length) { fi = f; ri = gi - acc; break; }
-        acc += officeFloors[f].rooms.length;
-      }
-      const cols = 3, cw = FW / cols, rows = Math.ceil(officeFloors[fi].rooms.length / cols), cd = FD / rows;
-      const col = ri % cols, row = Math.floor(ri / cols);
-      const cx = -FW / 2 + col * cw + cw / 2, cz = -FD / 2 + row * cd + cd / 2;
-      const slot = ai % 4;
-      const px = cx - 2.8 + (slot % 2) * 2.4, pz = cz - 2.2 + Math.floor(slot / 2) * 2.2;
-      const g = new THREE.Group();
-      g.userData.agent = a;
-      const label = textSprite(String((a as Record<string, unknown>).display_name ?? (a as Record<string, unknown>).name ?? (a as Record<string, unknown>).id ?? `agen-${ai}`).slice(0, 14), charEntry(a, ai).color, 0.45);
-      label.position.y = 3.15;
-      g.add(label);
-      const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.7, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3 }));
-      shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.02; g.add(shadow);
-      g.position.set(px, fi * GAP + 0.62, pz);
-      g.rotation.y = (ai * 1.3) % (Math.PI * 2);
-      floorGroups[fi].add(g);
-      const rig: Rig = { g, base: g.position.clone(), phase: ai * 1.7, mixer: new THREE.AnimationMixer(g), clips: new Map(), cur: '', act: null, agent: a, label };
-      rigs.push(rig);
-      return rig;
-    };
-    const playClip = (rig: Rig, name: string) => {
-      if (rig.cur === name || !rig.clips.has(name)) return;
-      const next = rig.mixer.clipAction(rig.clips.get(name)!);
-      next.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.3).play();
-      rig.act?.fadeOut(0.3);
-      rig.act = next; rig.cur = name;
-    };
-    let cancelled = false;
-    state.current.agents.forEach((a, ai) => {
-      const rig = spawnPlaceholder(a, ai);
-      // Model rig dari file .glb — bukan primitif
-      glbLoader.loadAsync(charEntry(a, ai).file).then((gltf: { scene: THREE.Group; animations: THREE.AnimationClip[] }) => {
-        if (cancelled) return;
-        const model = SkeletonUtils.clone(gltf.scene);
-        model.traverse((o: THREE.Object3D) => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.userData.agent = a; pickables.push(o); } });
-        model.userData.agent = a;
-        rig.g.add(model);
-        for (const c of gltf.animations) rig.clips.set(c.name, c);
-        playClip(rig, animFor(a));
-      }).catch(() => { /* placeholder bertahan bila file belum ada */ });
-    });
-
-    const HELI = { y: 11, r: 56, phi: 1.28, theta: 0.75 };
-    const FOCUS_R = 42;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const initF = focusRef.current;
-    const target = new THREE.Vector3(0, initF < 0 ? HELI.y : initF * GAP + 2.5, 0);
-    const goal = target.clone();
-    let goalRadius = initF < 0 ? HELI.r : FOCUS_R;
-    let goalPhi = initF < 0 ? HELI.phi : 1.28;
-    let lastFocus = initF;
-    let lastReset = resetRef.current;
-    let theta = HELI.theta, phi = initF < 0 ? HELI.phi : 1.28, radius = goalRadius;
-    let auto = !reduced && spinRef.current;
-    const applyDim = (ff: number) => {
-      floorGroups.forEach((fg2, fi2) => {
-        const dim = ff >= 0 && fi2 !== ff;
-        // Label ruangan hanya tampil di lantai fokus (tampilan semua: sembunyi agar tidak numpuk); tag lantai selalu tampil
-        (roomLabels[fi2] ?? []).forEach(sp => { sp.visible = ff >= 0 && !dim; });
-        fg2.traverse(o => {
-          if ((o as THREE.Points).isPoints || o.userData.noDim) return;
-          if ((o as THREE.Sprite).isSprite && ((roomLabels[fi2] ?? []).includes(o as THREE.Sprite) || floorTags.includes(o as THREE.Sprite))) return;
-          const mm = o as THREE.Mesh | THREE.Sprite;
-          const material = (mm as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
-          if (!material) return;
-          const mats = Array.isArray(material) ? material : [material];
-          mats.forEach(mt => {
-            if (mt === (dust.material as THREE.Material)) return;
-            mt.transparent = true;
-            mt.opacity = dim ? 0.14 : (mt.userData.baseOpacity ?? 1) as number;
-          });
-        });
-      });
-    };
-    // Simpan opacity dasar material kaca/cahaya
-    scene.traverse(o => {
-      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
-      if (m && !Array.isArray(m)) (m.userData as Record<string, unknown>).baseOpacity = m.opacity;
-    });
-    applyDim(initF);
-    const applyCam = () => {
-      camera.position.set(
-        target.x + radius * Math.sin(phi) * Math.sin(theta),
-        target.y + radius * Math.cos(phi),
-        target.z + radius * Math.sin(phi) * Math.cos(theta),
-      );
-      camera.lookAt(target);
-    };
-    applyCam();
-
-    let dragging = false, moved = 0, lx = 0, ly = 0, downAt = 0;
-    const dom = renderer.domElement;
-    dom.style.touchAction = 'none';
-    dom.style.display = 'block';
-    dom.style.width = '100%';
-    dom.style.height = '100%';
-    const down = (e: PointerEvent) => { dragging = true; moved = 0; lx = e.clientX; ly = e.clientY; downAt = Date.now(); auto = false; try { dom.setPointerCapture(e.pointerId); } catch { /* abaikan */ } };
-    const move = (e: PointerEvent) => {
-      if (!dragging) return;
-      const dx = e.clientX - lx, dy = e.clientY - ly;
-      moved += Math.abs(dx) + Math.abs(dy);
-      theta -= dx * 0.006;
-      phi = Math.min(1.35, Math.max(0.35, phi - dy * 0.004));
-      lx = e.clientX; ly = e.clientY;
-      applyCam();
-    };
-    const up = (e: PointerEvent) => {
-      dragging = false;
-      if (moved < 6 && Date.now() - downAt < 600) {
-        const r = dom.getBoundingClientRect();
-        const ptr = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-        const ray = new THREE.Raycaster();
-        ray.setFromCamera(ptr, camera);
-        const hit = ray.intersectObjects(pickables, false)[0];
-        const agent = (hit?.object.userData.agent ?? (hit?.object.userData.pick as THREE.Group | undefined)?.userData.agent) as Row | undefined;
-        if (agent) select.current(detailOf(agent));
-      }
-    };
-    const wheel = (e: WheelEvent) => { e.preventDefault(); radius = Math.min(110, Math.max(26, radius + e.deltaY * 0.05)); applyCam(); };
-    dom.addEventListener('pointerdown', down);
-    dom.addEventListener('pointermove', move);
-    dom.addEventListener('pointerup', up);
-    dom.addEventListener('wheel', wheel, { passive: false });
-
-    const resize = () => {
-      const w = el.clientWidth || 800, h = Math.max(380, Math.min(620, w * 0.55));
-      renderer.setSize(w, h, false);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    };
-    resize();
-    const weak = small || (navigator.hardwareConcurrency ?? 8) <= 4 || reduced;
-    let composer: EffectComposer | null = null;
-    let bloom: UnrealBloomPass | null = null;
-    if (!weak) {
-      try {
-        composer = new EffectComposer(renderer);
-        composer.addPass(new RenderPass(scene, camera));
-        bloom = new UnrealBloomPass(new THREE.Vector2(el.clientWidth || 800, 400), 0.12, 0.4, 1.0);
-        composer.addPass(bloom);
-        composer.addPass(new OutputPass());
-      } catch { composer = null; }
-    }
-    const renderFrame = () => { if (composer) composer.render(); else renderer.render(scene, camera); };
-    const ro = new ResizeObserver(resize);
-    ro.observe(el);
-
-    const clock = new THREE.Clock();
-    let raf = 0;
-    const tick = () => {
-      const t = clock.getElapsedTime();
-      const ff = focusRef.current;
-      if (ff !== lastFocus) {
-        lastFocus = ff;
-        goal.set(0, ff < 0 ? HELI.y : ff * GAP + 2.5, 0);
-        goalRadius = ff < 0 ? HELI.r : FOCUS_R;
-        goalPhi = ff < 0 ? HELI.phi : 1.28;
-        applyDim(ff);
-      }
-      if (resetRef.current !== lastReset) {
-        lastReset = resetRef.current;
-        theta = HELI.theta; goalPhi = HELI.phi;
-        goal.set(0, HELI.y, 0); goalRadius = HELI.r;
-        auto = !reduced && spinRef.current;
-      }
-      auto = !dragging && !reduced && spinRef.current;
-      if (target.distanceToSquared(goal) > 0.0001 || Math.abs(radius - goalRadius) > 0.01 || Math.abs(phi - goalPhi) > 0.001) {
-        target.lerp(goal, 0.07);
-        radius += (goalRadius - radius) * 0.07;
-        phi += (goalPhi - phi) * 0.07;
-        applyCam();
-      }
-      if (auto) { theta += 0.0016; applyCam(); }
-      // Agen GLB: AnimationMixer + klip sesuai status (crossfade 0.3s), gerak posisi kecil
-      const dt = Math.min(clock.getDelta(), 0.05);
-      for (const rig of rigs) {
-        rig.mixer.update(dt);
-        playClip(rig, animFor(rig.agent));
-        const k = reduced ? 0 : 1;
-        const wx = Math.sin(t * 0.35 + rig.phase) * 1.1 * k;
-        const wz = Math.cos(t * 0.28 + rig.phase) * 0.9 * k;
-        rig.g.position.set(rig.base.x + wx, rig.base.y, rig.base.z + wz);
-        rig.g.rotation.y += (Math.atan2(wx, wz) - rig.g.rotation.y) * 0.02 * k + (auto ? 0.0004 : 0);
-      }
-      blinkers.forEach((b, i) => { (b as THREE.Mesh).visible = Math.sin(t * 3 + i * 1.3) > -0.2; });
-      // Debu naik perlahan
-      const pos = dustGeo.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < DUST; i++) {
-        let y = pos.getY(i) + 0.012;
-        if (y > totalH + 13) y = -1;
-        pos.setY(i, y);
-        pos.setX(i, pos.getX(i) + Math.sin(t * 0.6 + dustSeed[i]) * 0.004);
-      }
-      pos.needsUpdate = true;
-      renderFrame();
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      for (const rig of rigs) { rig.act?.stop(); rig.mixer.stopAllAction(); rig.mixer.uncacheRoot(rig.g); }
-      dom.removeEventListener('pointerdown', down);
-      dom.removeEventListener('pointermove', move);
-      dom.removeEventListener('pointerup', up);
-      dom.removeEventListener('wheel', wheel);
-      scene.traverse(o => {
-        const m = o as THREE.Mesh;
-        if (m.geometry) (m.geometry as THREE.BufferGeometry).dispose();
-        const material = m.material as THREE.Material | THREE.Material[] | undefined;
-        const mats = material ? (Array.isArray(material) ? material : [material]) : [];
-        mats.forEach(x => { const s = x as THREE.SpriteMaterial; s.map?.dispose(); x.dispose(); });
-      });
-      composer?.dispose();
-      renderer.dispose();
-      el.removeChild(dom);
-    };
+      const c = document.createElement('canvas');
+      if (!(c.getContext('webgl2') || c.getContext('webgl'))) setWebgl(false);
+    } catch { setWebgl(false); }
   }, []);
+  const logs = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of tasks) {
+      const id = String((t as Record<string, unknown>).assignee_agent ?? '');
+      if (!id) continue;
+      const line = `${String(t.stage ?? '').slice(0, 10)} ${String(t.title ?? '').slice(0, 30)} [${t.status}]`;
+      m.set(id, [line, m.get(id) ?? ''].filter(Boolean).join('\n').split('\n').slice(-6).join('\n'));
+    }
+    return m;
+  }, [tasks]);
+  const byFloor = useMemo(() => officeFloors.map((_, fi) => agents.map((a, ai) => ({ a, ai })).filter(({ a, ai }) => {
+    let acc = 0; for (let f = 0; f < officeFloors.length; f++) { const r = roomOfAgent(a, ai); if (r >= acc && r < acc + officeFloors[f].rooms.length) return f === fi; acc += officeFloors[f].rooms.length; } return false;
+  })), [agents]);
+  const detail = (a: Row) => parseRow({ ...a, current_task: a.current_task || tasks.find(t => t.id === a.current_task_id) });
+  const small = typeof window !== 'undefined' && window.innerWidth < 720;
+  const weak = small || (typeof navigator !== 'undefined' && (navigator.hardwareConcurrency ?? 8) <= 4);
+  if (!webgl) return <p className="muted">WebGL tidak tersedia di perangkat ini — gunakan denah 2D.</p>;
+  return (
+    <div className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" style={{ height: 560 }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(110, Math.max(18, n.r + e.deltaY * 0.05)); }}>
+      <Canvas shadows dpr={weak ? 1 : [1, 2]} camera={{ fov: 32, near: 0.1, far: 600 }} gl={{ antialias: true, alpha: true, powerPreference: 'high-performance', toneMappingExposure: 1.0 }} onPointerDown={e => { dragging.current = true; nav.current.moved = 0; nav.current.lx = e.clientX; nav.current.ly = e.clientY; }} onPointerUp={() => { dragging.current = false; }}>
+        <color attach="background" args={['#131a35']} />
+        <fog attach="fog" args={['#1a2145', 120, 300]} />
+        <ambientLight intensity={0.75} />
+        <hemisphereLight args={[0xffe0b3, 0x2a2440, 0.65]} />
+        <directionalLight position={[30, 58, 25]} intensity={1.6} color="#ffe7c2" castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-0.0004} shadow-normalBias={0.02} />
+        <directionalLight position={[-28, 22, -30]} intensity={0.5} color="#7dd3fc" />
+        <directionalLight position={[0, 14, 48]} intensity={0.5} color="#f0abfc" />
+        <Suspense fallback={null}>
+          <mesh rotation-x={-Math.PI / 2} position-y={-1.3} receiveShadow><boxGeometry args={[64, 46]} /><meshStandardMaterial color="#232c52" roughness={0.9} /></mesh>
+          <mesh rotation-x={-Math.PI / 2} position-y={-1.2} receiveShadow><boxGeometry args={[52, 36]} /><meshStandardMaterial color="#2e3a68" roughness={0.85} /></mesh>
+          <mesh position-y={-1.05} receiveShadow><boxGeometry args={[48, 0.35, 33]} /><meshStandardMaterial color="#33406f" roughness={0.8} /></mesh>
+          {[-14, 0, 14].map(x => <group key={x} position={[x, 0, 19.5]}><mesh position-y={0.8} castShadow><cylinderGeometry args={[0.09, 0.12, 1.6, 8]} /><meshStandardMaterial color="#3b4670" /></mesh><mesh position-y={1.7}><sphereGeometry args={[0.22, 10, 10]} /><meshStandardMaterial color="#fde68a" emissive={0xfbbf24} emissiveIntensity={2.2} /></mesh><pointLight position-y={1.7} color="#fbbf24" intensity={6} distance={14} decay={2} /></group>)}
+          {[-19, -9.5, 9.5, 19].map(x => <mesh key={x} rotation-x={-Math.PI / 2} position={[x, -1.0, 0]}><planeGeometry args={[6, 30]} /><meshStandardMaterial color="#3f4c80" roughness={0.85} /></mesh>)}
+          {officeFloors.map((_, fi) => (focusFloor < 0 || fi === focusFloor) && <Floor key={fi} fi={fi} agents={byFloor[fi]} logs={logs} onSelect={a => onSelect(detail(a))} dim={false} focusAll={focusFloor < 0} nav={nav} />)}
+          <ContactShadows position={[0, -0.9, 0]} opacity={0.5} scale={90} blur={2} far={4} />
+          <HandoffPaths agents={agents} />
+          <Sparkles count={weak ? 20 : 60} scale={[70, 36, 55]} size={2} speed={0.25} opacity={0.35} color="#8ea2ff" position={[0, 12, 0]} />
+        </Suspense>
+        <CamRig focus={focusFloor} resetToken={resetToken} spin={spin} dragging={dragging} nav={nav} />
+        {!weak && <EffectComposer><Bloom intensity={0.35} luminanceThreshold={0.55} luminanceSmoothing={0.3} mipmapBlur /><Vignette darkness={0.45} offset={0.3} /></EffectComposer>}
+      </Canvas>
+      <style>{'@keyframes blink{50%{opacity:0}}'}</style>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    host.current?.setAttribute('data-focus-floor', String(focusFloor));
-  }, [focusFloor]);
-
-  return <div ref={host} className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" />;
+export function preloadCharacters(ids: string[]) {
+  for (const id of ids) { try { useGLTF.preload(`/assets/characters/${id}.glb`); } catch { /* abaikan */ } }
 }

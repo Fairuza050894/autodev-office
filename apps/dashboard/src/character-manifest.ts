@@ -31,8 +31,7 @@ export function charEntry(a: Row, i: number): CharEntry {
   return CHARACTERS[id] ?? { id: id || `agen-${i}`, file: `/assets/characters/${id || `agen-${i}`}.glb`, accessory: 'headset', color: '#6366f1', license: CC0, source: Q };
 }
 // Status → klip animasi (crossfade 0.3s di loader)
-export function animFor(a: Row): string {
-  const s = String(a.status ?? (a.current_task_id ? 'RUNNING' : 'idle')).toUpperCase();
+export function animFor(a: Row): string {  const s = String(a.status ?? (a.current_task_id ? 'RUNNING' : 'idle')).toUpperCase();
   if (s === 'RUNNING' || s === 'WORKING') return 'typing';
   if (s === 'BLOCKED' || s === 'ESCALATED') return 'thinking';
   if (s === 'DONE') return 'celebrate';
