@@ -221,19 +221,57 @@ function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number;
   );
 }
 
-// Kontrol kamera: fokus lantai + reset + putar otomatis
-function CamRig({ focus, resetToken, spin, dragging, nav }: { focus: number; resetToken: number; spin: boolean; dragging: React.MutableRefObject<boolean>; nav: React.MutableRefObject<NavState> }) {
+// Lift animasi antar lantai — kabin naik-turun perlahan agar perpindahan agen masuk akal
+function Lift() {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(st => {
+    const t = st.clock.elapsedTime * 0.12 % 1;
+    const y = t < 0.5 ? t * 2 * GAP * 2 : (1 - (t - 0.5) * 2) * GAP * 2;
+    ref.current?.position.set(FW / 2 + 3.4, y + 1.2, FD / 2 - 2);
+  });
+  return (
+    <group>
+      <mesh position={[FW / 2 + 3.4, GAP, FD / 2 - 2]}><boxGeometry args={[2.2, GAP * 2 + 3, 2.2]} /><meshStandardMaterial color="#2b3768" transparent opacity={0.35} roughness={0.2} metalness={0.3} /></mesh>
+      <mesh ref={ref}><boxGeometry args={[1.6, 2, 1.6]} /><meshStandardMaterial color="#f59e0b" emissive={0xf59e0b} emissiveIntensity={0.5} roughness={0.4} /></mesh>
+    </group>
+  );
+}
+
+// Konfeti 3D saat proyek delivered — kotak warna-warni jatuh berputar, loop 6 detik
+function Confetti3D({ on }: { on: boolean }) {
+  const ref = useRef<THREE.Group>(null);
+  const cols = useMemo(() => ['#6366f1', '#22d3ee', '#22c55e', '#f59e0b', '#f0abfc'], []);
+  const parts = useMemo(() => Array.from({ length: 90 }, (_, i) => ({ x: (i * 37 % 60) - 30, z: (i * 53 % 40) - 20, d: 1.5 + (i % 5) * 0.4, r: (i % 7) * 0.9, c: cols[i % cols.length] })), [cols]);
+  useFrame(st => {
+    if (!ref.current || !on) return;
+    const t = st.clock.elapsedTime;
+    ref.current.children.forEach((m, i) => {
+      const p = parts[i];
+      m.position.set(p.x + Math.sin(t * 0.8 + i) * 1.2, 26 - ((t * p.d + i * 2.2) % 28), p.z);
+      m.rotation.set(t * p.r, t * p.r * 0.7, 0);
+    });
+  });
+  if (!on) return null;
+  return <group ref={ref}>{parts.map((p, i) => <mesh key={i}><boxGeometry args={[0.35, 0.35, 0.08]} /><meshBasicMaterial color={p.c} /></mesh>)}</group>;
+}
+
+// Kontrol kamera: fokus lantai + reset + putar otomatis + ikuti agen
+function CamRig({ focus, resetToken, spin, dragging, nav, follow }: { focus: number; resetToken: number; spin: boolean; dragging: React.MutableRefObject<boolean>; nav: React.MutableRefObject<NavState>; follow?: THREE.Vector3 | null }) {
   const { camera } = useThree();
-  const st = useRef({ tx: new THREE.Vector3(0, HELI.y, 0), lastF: -99, lastR: -1 });
+  const st = useRef({ tx: new THREE.Vector3(0, HELI.y, 0), lastF: -99, lastR: -1, lastFol: '' });
   useEffect(() => { st.current.lastF = -99; }, [focus]);
   useFrame((_, dt) => {
     const s = st.current, n = nav.current;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (focus !== s.lastF) {
+    const fk = follow ? `${follow.x.toFixed(1)},${follow.y.toFixed(1)},${follow.z.toFixed(1)}` : '';
+    if (follow) {
+      s.lastF = 998; s.tx.lerp(follow, Math.min(1, dt * 3));
+      if (fk !== s.lastFol) s.lastFol = fk;
+    } else if (focus !== s.lastF) {
       s.lastF = focus;
       s.tx.set(0, focus < 0 ? HELI.y : focus * GAP + 2.5, 0);
     }
-    n.gr = focus < 0 ? HELI.r : 34; n.gp = focus < 0 ? HELI.phi : 1.12;
+    n.gr = follow ? 22 : focus < 0 ? HELI.r : 34; n.gp = follow ? 1.05 : focus < 0 ? HELI.phi : 1.12;
     n.r += (n.gr - n.r) * Math.min(1, dt * 4);
     n.phi += (n.gp - n.phi) * Math.min(1, dt * 4);
     if (resetToken !== s.lastR) { s.lastR = resetToken; n.theta = HELI.theta; n.gr = n.r = HELI.r; n.gp = n.phi = HELI.phi; s.tx.set(0, HELI.y, 0); }
@@ -244,7 +282,7 @@ function CamRig({ focus, resetToken, spin, dragging, nav }: { focus: number; res
   return null;
 }
 
-export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, resetToken = 0, spin = true }: { agents: Row[]; tasks: Row[]; onSelect: (r: Row) => void; focusFloor?: number; resetToken?: number; spin?: boolean }) {
+export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, resetToken = 0, spin = true, followId = null, celebrate = false, night }: { agents: Row[]; tasks: Row[]; onSelect: (r: Row) => void; focusFloor?: number; resetToken?: number; spin?: boolean; followId?: string | null; celebrate?: boolean; night?: boolean }) {
   const dragging = useRef(false);
   const nav = useRef<NavState>({ theta: HELI.theta, phi: HELI.phi, r: HELI.r, gr: HELI.r, gp: HELI.phi, lx: 0, ly: 0, moved: 0 });
   const [webgl, setWebgl] = useState(true);
@@ -270,15 +308,23 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
   const detail = (a: Row) => parseRow({ ...a, current_task: a.current_task || tasks.find(t => t.id === a.current_task_id) });
   const small = typeof window !== 'undefined' && window.innerWidth < 720;
   const weak = small || (typeof navigator !== 'undefined' && (navigator.hardwareConcurrency ?? 8) <= 4);
+  const nightMode = night ?? (() => { const h = new Date().getHours(); return h < 6 || h >= 18; })();
+  const followPos = useMemo(() => {
+    if (!followId) return null;
+    const ai = agents.findIndex(a => String(a.id) === followId);
+    if (ai < 0) return null;
+    return agentWorldPos(agents[ai], ai);
+  }, [followId, agents.map(a => `${a.id}:${a.status}:${(a as { current_task_id?: string }).current_task_id ?? ''}`).join(',')]);
+  // ponytail: auto-quality + fallback 2D sudah ada di bawah; instancing/LOD karakter jauh = upgrade saat >40 agen
   if (!webgl) return <p className="muted">WebGL tidak tersedia di perangkat ini — gunakan denah 2D.</p>;
   return (
     <div className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" style={{ height: 560 }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(110, Math.max(18, n.r + e.deltaY * 0.05)); }}>
       <Canvas shadows dpr={weak ? 1 : [1, 2]} camera={{ fov: 32, near: 0.1, far: 600 }} gl={{ antialias: true, alpha: true, powerPreference: 'high-performance', toneMappingExposure: 1.0 }} onPointerDown={e => { dragging.current = true; nav.current.moved = 0; nav.current.lx = e.clientX; nav.current.ly = e.clientY; }} onPointerUp={() => { dragging.current = false; }}>
-        <color attach="background" args={['#131a35']} />
-        <fog attach="fog" args={['#1a2145', 120, 300]} />
-        <ambientLight intensity={0.75} />
-        <hemisphereLight args={[0xffe0b3, 0x2a2440, 0.65]} />
-        <directionalLight position={[30, 58, 25]} intensity={1.6} color="#ffe7c2" castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-0.0004} shadow-normalBias={0.02} />
+        <color attach="background" args={[nightMode ? '#070b1d' : '#131a35']} />
+        <fog attach="fog" args={[nightMode ? '#0b1028' : '#1a2145', 120, 300]} />
+        <ambientLight intensity={nightMode ? 0.45 : 0.75} />
+        <hemisphereLight args={nightMode ? [0x8ea2ff, 0x141a35, 0.4] : [0xffe0b3, 0x2a2440, 0.65]} />
+        <directionalLight position={[30, 58, 25]} intensity={nightMode ? 0.8 : 1.6} color={nightMode ? '#8ea2ff' : '#ffe7c2'} castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-0.0004} shadow-normalBias={0.02} />
         <directionalLight position={[-28, 22, -30]} intensity={0.5} color="#7dd3fc" />
         <directionalLight position={[0, 14, 48]} intensity={0.5} color="#f0abfc" />
         <Suspense fallback={null}>
@@ -288,11 +334,13 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
           {[-14, 0, 14].map(x => <group key={x} position={[x, 0, 19.5]}><mesh position-y={0.8} castShadow><cylinderGeometry args={[0.09, 0.12, 1.6, 8]} /><meshStandardMaterial color="#3b4670" /></mesh><mesh position-y={1.7}><sphereGeometry args={[0.22, 10, 10]} /><meshStandardMaterial color="#fde68a" emissive={0xfbbf24} emissiveIntensity={2.2} /></mesh><pointLight position-y={1.7} color="#fbbf24" intensity={6} distance={14} decay={2} /></group>)}
           {[-19, -9.5, 9.5, 19].map(x => <mesh key={x} rotation-x={-Math.PI / 2} position={[x, -1.0, 0]}><planeGeometry args={[6, 30]} /><meshStandardMaterial color="#3f4c80" roughness={0.85} /></mesh>)}
           {officeFloors.map((_, fi) => (focusFloor < 0 || fi === focusFloor) && <Floor key={fi} fi={fi} agents={byFloor[fi]} logs={logs} onSelect={a => onSelect(detail(a))} dim={false} focusAll={focusFloor < 0} nav={nav} />)}
+          <Lift />
+          <Confetti3D on={celebrate} />
           <ContactShadows position={[0, -0.9, 0]} opacity={0.5} scale={90} blur={2} far={4} />
           <HandoffPaths agents={agents} />
           <Sparkles count={weak ? 20 : 60} scale={[70, 36, 55]} size={2} speed={0.25} opacity={0.35} color="#8ea2ff" position={[0, 12, 0]} />
         </Suspense>
-        <CamRig focus={focusFloor} resetToken={resetToken} spin={spin} dragging={dragging} nav={nav} />
+        <CamRig focus={focusFloor} resetToken={resetToken} spin={spin && !followId} dragging={dragging} nav={nav} follow={followPos} />
         {!weak && <EffectComposer><Bloom intensity={0.35} luminanceThreshold={0.55} luminanceSmoothing={0.3} mipmapBlur /><Vignette darkness={0.45} offset={0.3} /></EffectComposer>}
       </Canvas>
       <style>{'@keyframes blink{50%{opacity:0}}'}</style>
