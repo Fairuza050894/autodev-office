@@ -4,7 +4,7 @@ import type { NextRequest } from 'next/server';
 export async function middleware(request: NextRequest) {
   const apiUrl = process.env.API_URL;
   
-  // Add debug header to verify middleware runs
+  // Debug header
   const response = NextResponse.next();
   response.headers.set('x-middleware-debug', 'running');
   
@@ -15,6 +15,7 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   
+  // Match API and live routes
   if (pathname.startsWith('/api/v1/') || pathname.startsWith('/live/')) {
     response.headers.set('x-middleware-debug', 'proxying');
     
@@ -51,6 +52,7 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+// Match ALL routes, filter in middleware
 export const config = {
-  matcher: ['/api/v1/:path*', '/live/:path*'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png$).*)'],
 };
