@@ -9,8 +9,8 @@ import { parseRow, type Row } from '@autodev/ui';
 import { isBusyAgent, officeFloors, roomOfAgent } from './office-data';
 import { animFor, charEntry } from './character-manifest';
 
-const FW = 32, FD = 22, GAP = 14;
-const HELI = { y: 12, r: 108, phi: 1.0, theta: 0.75 };
+const FW = 36, FD = 24, GAP = 18;
+const HELI = { y: 14, r: 132, phi: 0.92, theta: 0.6 };
 const floorCols = ['#f59e0b', '#22d3ee', '#c084fc'];
 const ROOM_ICON: Record<string,string> = { RECEPTION:'◉', 'PM ROOM':'✦', 'BA & PO':'▤', 'DESIGN STUDIO':'✎', ARCHITECTURE:'⌂', 'DEV FLOOR':'⌨', 'QA LAB':'🧪', SECURITY:'🛡', 'DEVOPS / SERVER':'🖥', 'RELEASE DESK':'🚀', LIBRARY:'📚', PANTRY:'☕', 'GAME ROOM':'🎮', 'REST ROOM':'💤', GYM:'🏋', 'ROOFTOP LOUNGE':'🌙' };
 interface NavState { theta: number; phi: number; r: number; gr: number; gp: number; lx: number; ly: number; moved: number }
@@ -118,8 +118,8 @@ function Agent({ a, ai, pos, showLabel = true, nav, onSelect, focusAll = false }
   const ring = st === 'working' || st === 'running' || Boolean((a as Record<string, unknown>).current_task_id) ? '#6366f1' : st === 'blocked' || st === 'failed' ? '#f59e0b' : '#22c55e';
   return (
     <group ref={ref} position={pos} rotation-y={(ai * 1.3) % (Math.PI * 2)} userData={{ agent: a }} onClick={e => { e.stopPropagation(); if (nav.current.moved > 6) return; onSelect(a); }}>
-      <primitive object={model} scale={1.6} />
-{showLabel && (!focusAll || busy) && <Billboard position={[0, 4.6, 0]}>
+      <primitive object={model} scale={2.2} />
+{showLabel && (!focusAll || busy) && <Billboard position={[0, 6.0, 0]}>
         <Html center zIndexRange={[60, 0]} occlude="raycast" style={{ pointerEvents: 'none' }}>
           <div style={{ fontSize: focusAll ? 12 : 13, fontWeight: 700, color: '#fff', background: 'rgba(10,15,35,.88)', border: `2px solid ${entry.color}`, borderRadius: 12, padding: '3px 10px', whiteSpace: 'nowrap', boxShadow: '0 2px 12px #0008' }}>{focusAll ? name.split(' · ')[0] : name}</div>
         </Html>
@@ -204,7 +204,7 @@ function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number;
       <mesh position-y={0.42}><boxGeometry args={[FW + 2.6, 0.14, FD + 2.6]} /><meshStandardMaterial color="#1a2350" emissive={floorCols[fi]} emissiveIntensity={0.12} roughness={0.6} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>
       {[[0, FD / 2 + 1.2, FW + 2.6, 0.3], [0, -FD / 2 - 1.2, FW + 2.6, 0.3]].map(([x, z, w, d], i) => <mesh key={`ex${i}`} position={[x, 0.5, z]}><boxGeometry args={[w, 0.22, d]} /><meshStandardMaterial color={floorCols[fi]} emissive={floorCols[fi]} emissiveIntensity={0.9} roughness={0.5} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>)}
       {[[FW / 2 + 1.2, 0], [-FW / 2 - 1.2, 0]].map(([x, z], i) => <mesh key={`ez${i}`} position={[x, 0.5, z]}><boxGeometry args={[0.3, 0.22, FD + 2.6]} /><meshStandardMaterial color={floorCols[fi]} emissive={floorCols[fi]} emissiveIntensity={0.9} roughness={0.5} transparent={dim} opacity={dim ? 0.14 : 1} /></mesh>)}
-      {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => <mesh key={`${sx}${sz}`} position={[sx * (FW / 2 + 0.6), 2.6, sz * (FD / 2 + 0.6)]} castShadow><cylinderGeometry args={[0.4, 0.45, 4.6, 10]} /><meshStandardMaterial color="#2b3768" /></mesh>)}
+      {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => <mesh key={`${sx}${sz}`} position={[sx * (FW / 2 + 0.6), 1.8, sz * (FD / 2 + 0.6)]} castShadow><cylinderGeometry args={[0.3, 0.35, 3.2, 10]} /><meshStandardMaterial color="#2b3768" /></mesh>)}
       <pointLight position={[0, 6.5, 0]} color="#fff2df" intensity={7} distance={26} decay={1.8} />
       {fl.rooms.map((room, ri) => {
         const col = ri % cols, row = Math.floor(ri / cols);
@@ -223,18 +223,59 @@ function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number;
   );
 }
 
+// Tangga sisi kiri-kanan antar lantai — sejajar sumbu Z, menempel sisi gedung
+function Stairs({ fromY, toY, x, z }: { fromY: number; toY: number; x: number; z: number; flip?: boolean }) {
+  const steps = 14;
+  return (
+    <group>
+      {Array.from({ length: steps }, (_, i) => {
+        const t = (i + 0.5) / steps;
+        return <mesh key={i} position={[x, fromY + 1 + (toY - fromY) * t, z + i * 0.9]} castShadow><boxGeometry args={[2.4, 0.3, 0.95]} /><meshStandardMaterial color="#4a5688" roughness={0.7} /></mesh>;
+      })}
+    </group>
+  );
+}
+
+// Backdrop kota (M): blok tetangga + jalan + pohon, boks mati tanpa interaksi
+function CityBackdrop() {
+  const blocks = useMemo(() => [
+    { x: -70, z: -48, w: 14, h: 16, d: 12, c: '#2b3768' }, { x: -78, z: -14, w: 12, h: 10, d: 10, c: '#33406f' },
+    { x: 70, z: -44, w: 15, h: 18, d: 12, c: '#2b3768' }, { x: 78, z: -12, w: 11, h: 10, d: 10, c: '#33406f' },
+    { x: -38, z: -58, w: 12, h: 14, d: 10, c: '#2e3a68' }, { x: 0, z: -64, w: 16, h: 20, d: 12, c: '#2b3768' },
+    { x: 38, z: -58, w: 12, h: 12, d: 10, c: '#33406f' }, { x: -52, z: -56, w: 13, h: 12, d: 10, c: '#2e3a68' },
+    { x: 52, z: -56, w: 14, h: 14, d: 11, c: '#2b3768' },
+  ], []);
+  const trees = useMemo(() => [[-72, -20], [-70, 8], [72, -18], [70, 10], [-60, -44], [58, -44], [-30, -48], [30, -48]], []);
+  return (
+    <group>
+      <mesh rotation-x={-Math.PI / 2} position-y={-1.45} receiveShadow><boxGeometry args={[220, 160]} /><meshStandardMaterial color="#1c2450" roughness={0.95} /></mesh>
+      <mesh rotation-x={-Math.PI / 2} position={[0, -1.35, 30]}><planeGeometry args={[200, 8]} /><meshStandardMaterial color="#3f4c80" roughness={0.85} /></mesh>
+      <mesh rotation-x={-Math.PI / 2} position={[0, -1.35, -32]}><planeGeometry args={[200, 8]} /><meshStandardMaterial color="#3f4c80" roughness={0.85} /></mesh>
+      {blocks.map((b, i) => <group key={i} position={[b.x, 0, b.z]}>
+        <mesh position-y={b.h / 2 - 1.3} castShadow><boxGeometry args={[b.w, b.h, b.d]} /><meshStandardMaterial color={b.c} roughness={0.8} /></mesh>
+        {[-1, 0, 1].map(r => <mesh key={r} position={[0, b.h / 2 + r * 3 - 1.3, b.d / 2 + 0.06]}><boxGeometry args={[b.w * 0.7, 1.1, 0.08]} /><meshStandardMaterial color="#0b1020" emissive={0xfbbf24} emissiveIntensity={0.7} /></mesh>)}
+      </group>)}
+      {trees.map(([x, z], i) => <group key={i} position={[x, 0, z]}>
+        <mesh position-y={-0.3} castShadow><cylinderGeometry args={[0.18, 0.24, 1.6, 8]} /><meshStandardMaterial color="#5b4226" /></mesh>
+        <mesh position-y={1.1}><sphereGeometry args={[1.1, 10, 10]} /><meshStandardMaterial color="#22c55e" roughness={0.8} /></mesh>
+      </group>)}
+    </group>
+  );
+}
+
 // Lift animasi antar lantai — kabin naik-turun perlahan agar perpindahan agen masuk akal
 function Lift() {
   const ref = useRef<THREE.Mesh>(null);
+  const lx = FW / 2 + 2.5, lz = -FD / 2 + 1;
   useFrame(st => {
     const t = st.clock.elapsedTime * 0.12 % 1;
     const y = t < 0.5 ? t * 2 * GAP * 2 : (1 - (t - 0.5) * 2) * GAP * 2;
-    ref.current?.position.set(FW / 2 + 3.4, y + 1.2, FD / 2 - 2);
+    ref.current?.position.set(lx, y + 1.2, lz);
   });
   return (
     <group>
-      <mesh position={[FW / 2 + 3.4, GAP, FD / 2 - 2]}><boxGeometry args={[2.2, GAP * 2 + 3, 2.2]} /><meshStandardMaterial color="#2b3768" transparent opacity={0.35} roughness={0.2} metalness={0.3} /></mesh>
-      <mesh ref={ref}><boxGeometry args={[1.6, 2, 1.6]} /><meshStandardMaterial color="#f59e0b" emissive={0xf59e0b} emissiveIntensity={0.5} roughness={0.4} /></mesh>
+      {[0, 1].map(g => <mesh key={g} position={[lx, g * GAP + GAP / 2, lz]}><boxGeometry args={[2, GAP, 2]} /><meshStandardMaterial color="#2b3768" transparent opacity={0.3} roughness={0.2} metalness={0.3} /></mesh>)}
+      <mesh ref={ref}><boxGeometry args={[1.4, 1.8, 1.4]} /><meshStandardMaterial color="#f59e0b" emissive={0xf59e0b} emissiveIntensity={0.5} roughness={0.4} /></mesh>
     </group>
   );
 }
@@ -273,7 +314,7 @@ function CamRig({ focus, resetToken, spin, dragging, nav, follow }: { focus: num
       s.lastF = focus;
       s.tx.set(0, focus < 0 ? GAP : focus * GAP + 2.5, 0);
     }
-    n.gr = follow ? 22 : focus < 0 ? HELI.r : 34; n.gp = follow ? 1.05 : focus < 0 ? HELI.phi : 1.12;
+    n.gr = follow ? 28 : focus < 0 ? HELI.r : 58; n.gp = follow ? 1.05 : focus < 0 ? HELI.phi : 1.02;
     n.r += (n.gr - n.r) * Math.min(1, dt * 4);
     n.phi += (n.gp - n.phi) * Math.min(1, dt * 4);
     if (resetToken !== s.lastR) { s.lastR = resetToken; n.theta = HELI.theta; n.gr = n.r = HELI.r; n.gp = n.phi = HELI.phi; s.tx.set(0, HELI.y, 0); }
@@ -320,23 +361,28 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
   // ponytail: auto-quality + fallback 2D sudah ada di bawah; instancing/LOD karakter jauh = upgrade saat >40 agen
   if (!webgl) return <p className="muted">WebGL tidak tersedia di perangkat ini — gunakan denah 2D.</p>;
   return (
-    <div className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" style={{ height: 680 }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(130, Math.max(18, n.r + e.deltaY * 0.05)); }}>
+    <div className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" style={{ height: 680 }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(220, Math.max(30, n.r + e.deltaY * 0.08)); }}>
       <Canvas shadows dpr={weak ? 1 : [1, 2]} camera={{ fov: 32, near: 0.1, far: 600 }} gl={{ antialias: true, alpha: true, powerPreference: 'high-performance', toneMappingExposure: 1.0 }} onPointerDown={e => { dragging.current = true; nav.current.moved = 0; nav.current.lx = e.clientX; nav.current.ly = e.clientY; }} onPointerUp={() => { dragging.current = false; }}>
         <color attach="background" args={[nightMode ? '#070b1d' : '#131a35']} />
-        <fog attach="fog" args={[nightMode ? '#0b1028' : '#1a2145', 120, 300]} />
+        <fog attach="fog" args={[nightMode ? '#0b1028' : '#1a2145', 260, 700]} />
         <ambientLight intensity={nightMode ? 0.45 : 0.75} />
         <hemisphereLight args={nightMode ? [0x8ea2ff, 0x141a35, 0.4] : [0xffe0b3, 0x2a2440, 0.65]} />
         <directionalLight position={[30, 58, 25]} intensity={nightMode ? 0.8 : 1.6} color={nightMode ? '#8ea2ff' : '#ffe7c2'} castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-0.0004} shadow-normalBias={0.02} />
         <directionalLight position={[-28, 22, -30]} intensity={0.5} color="#7dd3fc" />
         <directionalLight position={[0, 14, 48]} intensity={0.5} color="#f0abfc" />
         <Suspense fallback={null}>
-          <mesh rotation-x={-Math.PI / 2} position-y={-1.3} receiveShadow><boxGeometry args={[64, 46]} /><meshStandardMaterial color="#232c52" roughness={0.9} /></mesh>
-          <mesh rotation-x={-Math.PI / 2} position-y={-1.2} receiveShadow><boxGeometry args={[52, 36]} /><meshStandardMaterial color="#2e3a68" roughness={0.85} /></mesh>
-          <mesh position-y={-1.05} receiveShadow><boxGeometry args={[48, 0.35, 33]} /><meshStandardMaterial color="#33406f" roughness={0.8} /></mesh>
-          {[-14, 0, 14].map(x => <group key={x} position={[x, 0, 19.5]}><mesh position-y={0.8} castShadow><cylinderGeometry args={[0.09, 0.12, 1.6, 8]} /><meshStandardMaterial color="#3b4670" /></mesh><mesh position-y={1.7}><sphereGeometry args={[0.22, 10, 10]} /><meshStandardMaterial color="#fde68a" emissive={0xfbbf24} emissiveIntensity={2.2} /></mesh><pointLight position-y={1.7} color="#fbbf24" intensity={6} distance={14} decay={2} /></group>)}
-          {[-19, -9.5, 9.5, 19].map(x => <mesh key={x} rotation-x={-Math.PI / 2} position={[x, -1.0, 0]}><planeGeometry args={[6, 30]} /><meshStandardMaterial color="#3f4c80" roughness={0.85} /></mesh>)}
-          {officeFloors.map((_, fi) => (focusFloor < 0 || fi === focusFloor) && <Floor key={fi} fi={fi} agents={byFloor[fi]} logs={logs} onSelect={a => onSelect(detail(a))} dim={false} focusAll={focusFloor < 0} nav={nav} />)}
-          <Lift />
+          <CityBackdrop />
+          <mesh rotation-x={-Math.PI / 2} position-y={-1.3} receiveShadow><boxGeometry args={[84, 62]} /><meshStandardMaterial color="#232c52" roughness={0.9} /></mesh>
+          <mesh rotation-x={-Math.PI / 2} position-y={-1.2} receiveShadow><boxGeometry args={[66, 46]} /><meshStandardMaterial color="#2e3a68" roughness={0.85} /></mesh>
+          <mesh position-y={-1.05} receiveShadow><boxGeometry args={[60, 0.35, 42]} /><meshStandardMaterial color="#33406f" roughness={0.8} /></mesh>
+          {[-18, 0, 18].map(x => <group key={x} position={[x, 0, 25]}><mesh position-y={0.8} castShadow><cylinderGeometry args={[0.09, 0.12, 1.6, 8]} /><meshStandardMaterial color="#3b4670" /></mesh><mesh position-y={1.7}><sphereGeometry args={[0.22, 10, 10]} /><meshStandardMaterial color="#fde68a" emissive={0xfbbf24} emissiveIntensity={2.2} /></mesh><pointLight position-y={1.7} color="#fbbf24" intensity={6} distance={14} decay={2} /></group>)}
+          {[-24, -12, 12, 24].map(x => <mesh key={x} rotation-x={-Math.PI / 2} position={[x, -1.0, 0]}><planeGeometry args={[7, 38]} /><meshStandardMaterial color="#3f4c80" roughness={0.85} /></mesh>)}
+          {officeFloors.map((_, fi) => (focusFloor < 0 || fi === focusFloor) && <Floor key={fi} fi={fi} agents={byFloor[fi]} logs={logs} onSelect={a => onSelect(detail(a))} dim={focusFloor < 0 && fi > 0} focusAll={focusFloor < 0} nav={nav} />)}
+          {focusFloor < 0 && [0, 1].map(g => <group key={g}>
+            <Stairs fromY={g * GAP} toY={(g + 1) * GAP} x={-FW / 2 - 2} z={-FD / 2 - 2} />
+            <Stairs fromY={g * GAP} toY={(g + 1) * GAP} x={FW / 2 + 2} z={-FD / 2 - 2} flip />
+          </group>)}
+          {focusFloor < 0 && <Lift />}
           <Confetti3D on={celebrate} />
           <ContactShadows position={[0, -0.9, 0]} opacity={0.5} scale={90} blur={2} far={4} />
           <HandoffPaths agents={agents} />
