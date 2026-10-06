@@ -208,7 +208,7 @@ function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number;
       <mesh position-y={0.42}><boxGeometry args={[FW + 2.6, 0.14, FD + 2.6]} /><meshStandardMaterial color="#1a2350" emissive={floorCols[fi]} emissiveIntensity={0.12} roughness={0.6} transparent={dim} opacity={dim ? 0.3 : 1} /></mesh>
       {[[0, FD / 2 + 1.2, FW + 2.6, 0.3], [0, -FD / 2 - 1.2, FW + 2.6, 0.3]].map(([x, z, w, d], i) => <mesh key={`ex${i}`} position={[x, 0.5, z]}><boxGeometry args={[w, 0.22, d]} /><meshStandardMaterial color={floorCols[fi]} emissive={floorCols[fi]} emissiveIntensity={0.9} roughness={0.5} transparent={dim} opacity={dim ? 0.3 : 1} /></mesh>)}
       {[[FW / 2 + 1.2, 0], [-FW / 2 - 1.2, 0]].map(([x, z], i) => <mesh key={`ez${i}`} position={[x, 0.5, z]}><boxGeometry args={[0.3, 0.22, FD + 2.6]} /><meshStandardMaterial color={floorCols[fi]} emissive={floorCols[fi]} emissiveIntensity={0.9} roughness={0.5} transparent={dim} opacity={dim ? 0.3 : 1} /></mesh>)}
-      {((fi === 2 && focusAll) || fi !== 2) && <mesh position-y={4.2} receiveShadow><boxGeometry args={[FW + 1, 0.4, FD + 1]} /><meshStandardMaterial color={fi === 2 ? '#3b4670' : '#1a2350'} roughness={0.7} transparent opacity={fi === 2 ? 0.25 : 1} /></mesh>}
+      {focusAll && <mesh position-y={4.2} receiveShadow><boxGeometry args={[FW + 1, 0.4, FD + 1]} /><meshStandardMaterial color={fi === 2 ? '#3b4670' : '#1a2350'} roughness={0.7} transparent opacity={fi === 2 ? 0.25 : 0.18} /></mesh>}
       {fi === 2 && <group>
         {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => <mesh key={`rr${sx}${sz}`} position={[sx * (FW / 2 - 0.5), 5.4, sz * (FD / 2 - 0.5)]}><boxGeometry args={[0.25, 1.8, 0.25]} /><meshStandardMaterial color="#4a5688" roughness={0.6} /></mesh>)}
         {[0, 1, 2, 3].map(i => <mesh key={`rl${i}`} position={i < 2 ? [0, 6.2, (i ? 1 : -1) * (FD / 2 - 0.5)] : [(i % 2 ? 1 : -1) * (FW / 2 - 0.5), 6.2, 0]} rotation-y={i < 2 ? 0 : Math.PI / 2}><boxGeometry args={[FW - 1, 0.12, 0.12]} /><meshStandardMaterial color="#c084fc" emissive={0xc084fc} emissiveIntensity={0.8} /></mesh>)}
@@ -216,7 +216,7 @@ function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number;
         <pointLight position={[0, 5.5, 0]} color="#e9d5ff" intensity={4} distance={18} decay={1.8} />
       </group>}
       {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => <mesh key={`${sx}${sz}`} position={[sx * (FW / 2 + 0.6), 1.8, sz * (FD / 2 + 0.6)]} castShadow><cylinderGeometry args={[0.3, 0.35, 3.2, 10]} /><meshStandardMaterial color="#2b3768" /></mesh>)}
-      <pointLight position={[0, 6.5, 0]} color="#fff2df" intensity={7} distance={26} decay={1.8} />
+      <pointLight position={[0, 6.5, 0]} color="#fff2df" intensity={focusAll ? 4 : 9} distance={focusAll ? 20 : 32} decay={1.8} />
       {fl.rooms.map((room, ri) => {
         const col = ri % cols, row = Math.floor(ri / cols);
         const cx = -FW / 2 + col * cw + cw / 2, cz = -FD / 2 + row * cd + cd / 2;
@@ -239,15 +239,15 @@ function Floor({ fi, agents, logs, onSelect, dim, focusAll, nav }: { fi: number;
   );
 }
 
-// Tangga V: dua lajur kiri-kanan ketemu balkon tengah depan, naik ke lantai atas
+// Tangga V: dua lajur kiri-kanan di LUAR gedung ketemu balkon tengah depan
 function Stairs({ fromY, toY, side }: { fromY: number; toY: number; x?: number; z?: number; flip?: boolean; side: -1 | 1 }) {
   const steps = 10;
-  const sx = side * (FW / 2 + 1);
+  const sx = side * (FW / 2 + 4);
   return (
     <group>
       {Array.from({ length: steps }, (_, i) => {
         const t = (i + 0.5) / steps;
-        return <mesh key={i} position={[sx + (0 - sx) * t, fromY + 1 + (toY - fromY) * t, FD / 2 + 2]} castShadow><boxGeometry args={[2.2, 0.3, 1.2]} /><meshStandardMaterial color="#4a5688" roughness={0.7} /></mesh>;
+        return <mesh key={i} position={[sx + (0 - sx) * t, fromY + 1 + (toY - fromY) * t, FD / 2 + 5]} castShadow><boxGeometry args={[2.2, 0.3, 1.2]} /><meshStandardMaterial color="#4a5688" roughness={0.7} /></mesh>;
       })}
     </group>
   );
@@ -256,8 +256,8 @@ function Stairs({ fromY, toY, side }: { fromY: number; toY: number; x?: number; 
 function VBalkon({ y }: { y: number }) {
   return (
     <group>
-      <mesh position={[0, y + 0.1, FD / 2 + 2]} receiveShadow><boxGeometry args={[5.5, 0.3, 3.2]} /><meshStandardMaterial color="#33406f" roughness={0.7} /></mesh>
-      <mesh position={[0, y + 0.8, FD / 2 + 3.5]}><boxGeometry args={[5.5, 0.15, 0.15]} /><meshStandardMaterial color="#f59e0b" emissive={0xf59e0b} emissiveIntensity={0.6} /></mesh>
+      <mesh position={[0, y + 0.1, FD / 2 + 5]} receiveShadow><boxGeometry args={[5.5, 0.3, 3.2]} /><meshStandardMaterial color="#33406f" roughness={0.7} /></mesh>
+      <mesh position={[0, y + 0.8, FD / 2 + 6.5]}><boxGeometry args={[5.5, 0.15, 0.15]} /><meshStandardMaterial color="#f59e0b" emissive={0xf59e0b} emissiveIntensity={0.6} /></mesh>
     </group>
   );
 }
