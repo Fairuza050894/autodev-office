@@ -1,0 +1,12 @@
+[Unit]
+Description=Watchdog: Update Vercel API_URL when Cloudflare Tunnel URL changes
+After=cloudflared@%i.service
+
+[Service]
+Type=oneshot
+User=%i
+WorkingDirectory=/home/%i/Projects/Autodev-office
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/%i/Projects/Autodev-office/scripts/watchdog-ngrok.sh
+StandardOutput=journal
+StandardError=journal

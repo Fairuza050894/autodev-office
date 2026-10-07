@@ -1,0 +1,19 @@
+[Unit]
+Description=Cloudflare Tunnel for AutoDev Office API
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/Projects/Autodev-office
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/bin/bash -c 'until docker compose ps api 2>/dev/null | grep -q "Up"; do sleep 2; done'
+ExecStart=/usr/local/bin/cloudflared tunnel --url http://localhost:4000
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Run watchdog-ngrok every 5 minutes
+Requires=watchdog-ngrok@%i.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
