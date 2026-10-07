@@ -1,4 +1,4 @@
 {
   "$schema":"https://turbo.build/schema.json",
-  "tasks":{"build":{"dependsOn":["^build"],"outputs":[".next/**","!.next/cache/**","dist/**"]},"typecheck":{"dependsOn":["^typecheck"]},"dev":{"cache":false,"persistent":true}}
+  "tasks":{"build":{"dependsOn":["^build"],"outputs":[".next/**","!.next/cache/**","dist/**"],"env":["API_URL","DASHBOARD_URL"]},"typecheck":{"dependsOn":["^typecheck"]},"dev":{"cache":false,"persistent":true}}
 }
