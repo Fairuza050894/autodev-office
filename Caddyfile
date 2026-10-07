@@ -1,0 +1,49 @@
+{
+	admin off
+	email {$API_DOMAIN}
+}
+
+{$API_DOMAIN} {
+	reverse_proxy api:4000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote}
+		header_up X-Forwarded-For {remote}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+{$LIVE_DOMAIN} {
+	reverse_proxy live:4400 {
+		header_up Host {host}
+		header_up X-Real-IP {remote}
+		header_up X-Forwarded-For {remote}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+{$GITEA_DOMAIN} {
+	reverse_proxy gitea:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote}
+		header_up X-Forwarded-For {remote}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+{$MINIO_DOMAIN} {
+	reverse_proxy minio:9000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote}
+		header_up X-Forwarded-For {remote}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+{$MINIO_DOMAIN}:9001 {
+	reverse_proxy minio:9001 {
+		header_up Host {host}
+		header_up X-Real-IP {remote}
+		header_up X-Forwarded-For {remote}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

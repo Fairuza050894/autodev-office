@@ -1,0 +1,315 @@
+name: autodev-prod
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://autodev:${POSTGRES_PASSWORD}@postgres:5432/autodev
+  REDIS_URL: redis://redis:6379
+  SESSION_SECRET: ${SESSION_SECRET}
+  SETTINGS_KEY: ${SETTINGS_KEY}
+  PUBLIC_URL: https://${API_DOMAIN}
+  PUBLIC_BASE_URL: https://${API_DOMAIN}
+  DASHBOARD_URL: https://${DASHBOARD_DOMAIN}
+  PUBLIC_LIVE_URL: https://${LIVE_DOMAIN}
+  ADMIN_EMAIL: ${ADMIN_EMAIL}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  LLM_MODE: ${LLM_MODE:-real}
+  LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+  DEPLOY_TARGET: ${DEPLOY_TARGET:-docker-local}
+  LLM_MODEL: ${LLM_MODEL:-gpt-4o-mini}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+  OPENAI_API_KEY: ${OPENAI_API_KEY}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+  GEMINI_API_KEY: ${GEMINI_API_KEY}
+  RUNNER_URL: http://runner:4100
+  RUNNER_TOKEN: ${RUNNER_TOKEN}
+  WORKSPACE_ROOT: /workspaces
+  ARTIFACT_ROOT: /workspaces
+  SMTP_HOST: ${SMTP_HOST}
+  SMTP_PORT: ${SMTP_PORT}
+  SMTP_SECURE: ${SMTP_SECURE:-true}
+  SMTP_USER: ${SMTP_USER}
+  SMTP_PASSWORD: ${SMTP_PASSWORD}
+  EMAIL_FROM: ${EMAIL_FROM}
+  EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+  RESEND_API_KEY: ${RESEND_API_KEY}
+  GITEA_URL: https://${GITEA_DOMAIN}
+  GITEA_TOKEN: ${GITEA_TOKEN}
+  GITEA_USER: ${GITEA_USER:-autodev}
+  GITEA_TOKEN_FILE: /integration/gitea-token
+  S3_ENDPOINT: https://${MINIO_DOMAIN}
+  S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+  S3_BUCKET: autodev-artifacts
+  S3_REGION: ${S3_REGION:-us-east-1}
+  COOLIFY_URL: ${COOLIFY_URL:-}
+  COOLIFY_TOKEN: ${COOLIFY_TOKEN:-}
+  COOLIFY_APP_UUID: ${COOLIFY_APP_UUID:-}
+  COOLIFY_PUBLIC_URL: ${COOLIFY_PUBLIC_URL:-}
+  UAT_PROXY_URL: ${UAT_PROXY_URL:-}
+  UAT_EGRESS_NETWORK: ${UAT_EGRESS_NETWORK:-}
+
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      LIVE_DOMAIN: ${LIVE_DOMAIN}
+      GITEA_DOMAIN: ${GITEA_DOMAIN}
+      MINIO_DOMAIN: ${MINIO_DOMAIN}
+    restart: unless-stopped
+    depends_on: [api, live, gitea, minio]
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: autodev
+      POSTGRES_USER: autodev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/backup-postgres.sh:/backup/backup.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U autodev -d autodev]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes', --maxmemory, '512mb', --maxmemory-policy, 'allkeys-lru']
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  minio:
+    image: autodev-minio:local
+    build: {context: ., dockerfile: infra/Dockerfile.minio}
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_DOMAIN: ${MINIO_DOMAIN}
+    volumes: [minio-data:/data]
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://localhost:9000/minio/health/live").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  minio-init:
+    image: node:22-bookworm-slim
+    command: [node, /bootstrap/minio-init.mjs]
+    volumes:
+      - './infra/minio-init.mjs:/bootstrap/minio-init.mjs:ro'
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    depends_on:
+      minio: {condition: service_healthy}
+
+  gitea:
+    image: gitea/gitea:1.23.7
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__security__INSTALL_LOCK: 'true'
+      GITEA__service__DISABLE_REGISTRATION: 'true'
+      GITEA__server__ROOT_URL: https://${GITEA_DOMAIN}/
+      GITEA__server__SSH_DOMAIN: ${GITEA_DOMAIN}
+      GITEA__server__SSH_PORT: '22'
+      GITEA__server__DOMAIN: ${GITEA_DOMAIN}
+      GITEA__server__HTTP_PORT: '3000'
+    volumes: [gitea-data:/data]
+    healthcheck:
+      test: [CMD-SHELL, wget -q -O /dev/null http://localhost:3000/api/healthz]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  gitea-init:
+    image: gitea/gitea:1.23.7
+    user: root
+    entrypoint: [/bin/sh, /bootstrap/gitea-init.sh]
+    environment:
+      GITEA_USER: ${GITEA_USER:-autodev}
+      GITEA_PASSWORD: ${GITEA_PASSWORD:-${ADMIN_PASSWORD}}
+    volumes:
+      - gitea-data:/data
+      - integration:/integration
+      - './scripts/gitea-init.sh:/bootstrap/gitea-init.sh:ro'
+    depends_on:
+      gitea: {condition: service_healthy}
+
+  sandbox-image:
+    image: autodev-sandbox:local
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.sandbox
+    entrypoint: [node, -e, 'console.log("Sandbox image ready")']
+
+  runner:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.runner
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN}
+      PUBLIC_URL: https://${API_DOMAIN}
+      PUBLIC_LIVE_URL: https://${LIVE_DOMAIN}
+      WORKSPACE_ROOT: /workspaces
+      WORKSPACE_VOLUME: autodev-workspaces
+      SANDBOX_IMAGE: autodev-sandbox:local
+      GITEA_URL: https://${GITEA_DOMAIN}
+      GITEA_USER: ${GITEA_USER:-autodev}
+      GITEA_TOKEN_FILE: /integration/gitea-token
+      COOLIFY_URL: ${COOLIFY_URL:-}
+      COOLIFY_TOKEN: ${COOLIFY_TOKEN:-}
+      COOLIFY_APP_UUID: ${COOLIFY_APP_UUID:-}
+      COOLIFY_PUBLIC_URL: ${COOLIFY_PUBLIC_URL:-}
+      UAT_PROXY_URL: ${UAT_PROXY_URL:-}
+      UAT_EGRESS_NETWORK: ${UAT_EGRESS_NETWORK:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces:/workspaces
+      - runner-state:/state
+      - integration:/integration:ro
+    depends_on:
+      sandbox-image: {condition: service_completed_successfully}
+      gitea-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://localhost:4100/health",{headers:{authorization:"Bearer "+process.env.RUNNER_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 15s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2'
+
+  init:
+    image: autodev-api:local
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+    environment: *app-env
+    command: [sh, -ec, 'pnpm --filter @autodev/api migrate && pnpm --filter @autodev/api seed']
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  api:
+    image: autodev-api:local
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+    environment:
+      <<: *app-env
+      PORT: '4000'
+    command: [pnpm, --filter, '@autodev/api', 'start']
+    volumes:
+      - workspaces:/workspaces:ro
+      - integration:/integration:ro
+    depends_on:
+      init: {condition: service_completed_successfully}
+      runner: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+      gitea: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://localhost:4000/api/v1/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  worker:
+    image: autodev-api:local
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.api
+    environment: *app-env
+    command: [pnpm, --filter, '@autodev/api', worker]
+    volumes:
+      - integration:/integration:ro
+    depends_on:
+      init: {condition: service_completed_successfully}
+      runner: {condition: service_healthy}
+      gitea: {condition: service_healthy}
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  live:
+    image: node:22-bookworm-slim
+    user: node
+    command: [node, /gateway/live-gateway.mjs]
+    environment:
+      RUNNER_URL: http://runner:4100
+      RUNNER_TOKEN: ${RUNNER_TOKEN}
+    volumes:
+      - './infra/live-gateway.mjs:/gateway/live-gateway.mjs:ro'
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://localhost:4400/health").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  backup:
+    image: postgres:16-bookworm
+    command: [sh, -c, 'apt-get update -qq && apt-get install -y -qq awscli > /dev/null && /backup/backup.sh']
+    environment:
+      PGHOST: postgres
+      PGUSER: autodev
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:-autodev-backups}
+      S3_ENDPOINT: ${S3_ENDPOINT:-https://${MINIO_DOMAIN}}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - ./scripts/backup-postgres.sh:/backup/backup.sh:ro
+      - backup-data:/backups
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+    # One-shot: jalankan dari cron host VPS:
+    #   0 2 * * * cd /opt/autodev-office && docker compose -f docker-compose.prod.yml run --rm backup
+
+volumes:
+  backup-data:
+  postgres-data:
+  redis-data:
+  minio-data:
+  gitea-data:
+  workspaces: {name: autodev-workspaces}
+  runner-state:
+  integration:
+  caddy-data:
+  caddy-config:
