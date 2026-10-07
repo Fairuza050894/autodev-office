@@ -38,7 +38,7 @@ function Chart({title,data,kind='bar',value='value'}:{title:string;data:Record<s
 export default function MissionControl() {
  const pathname=usePathname();const router=useRouter();const segments=pathname.split('/').filter(Boolean); const view=segments[0]||'overview';const projectId=view==='projects'?segments[1]:undefined;
  const reduced=useReducedMotion();const [user,setUser]=useState<Row|null>(null);const [authReady,setAuthReady]=useState(false);const [data,setData]=useState<Row>(parseRow({}));const [error,setError]=useState('');const [loading,setLoading]=useState(false);const [live,setLive]=useState(false);const [feed,setFeed]=useState<Row[]>([]);const [drawer,setDrawer]=useState<Row|null>(null);const [theme,setTheme]=useState('dark');const [sidebar,setSidebar]=useState(false);const [chatOpen,setChatOpen]=useState(false);const [palette,setPalette]=useState(false);const [query,setQuery]=useState('');const [tab,setTab]=useState('Timeline');const [filter,setFilter]=useState('');const [sort,setSort]=useState('updated_at');const [compact,setCompact]=useState(false);const [selected,setSelected]=useState<string[]>([]);const [notice,setNotice]=useState('');
- const canEdit=user?.role==='Admin'||user?.role==='Operator'||user?.role==='admin'||user?.role==='operator';//cache-bust-v2
+ const canEdit=user?.role==='Admin'||user?.role==='Operator'||user?.role==='admin'||user?.role==='operator';
  const openDrawer=(value:Record<string,unknown>|null)=>setDrawer(value?parseRow(value):null);
  const [searchProjects,setSearchProjects]=useState<Row[]>([]);
  useEffect(()=>{if(!palette)return;api('/projects').then(result=>setSearchProjects(result.items||[])).catch(error=>setError(String(error)));},[palette]);
