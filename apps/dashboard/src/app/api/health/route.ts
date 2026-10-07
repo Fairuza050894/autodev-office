@@ -10,7 +10,7 @@ export async function GET() {
     );
   }
 
-  try:
+  try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     
