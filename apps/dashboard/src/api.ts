@@ -1,2 +1,3 @@
 import { parseRow } from '@autodev/ui';
 export async function api(path:string,method='GET',body?:unknown) { const response=await fetch(`/api/v1${path}`,{method,credentials:'include',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)}); const payload=parseRow(await response.json().catch(()=>({message:response.statusText}))); if(!response.ok){const error=payload.error;throw new Error(payload.message||(error&&typeof error==='object'&&'message' in error?String(error.message):String(error||`HTTP ${response.status}`)));} return payload; }
+export const FORCE_CHUNK_HASH = "v1791380804";
