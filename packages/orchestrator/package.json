@@ -1,1 +1,17 @@
-{"name":"@autodev/orchestrator","version":"1.0.0","type":"module","exports":"./src/index.ts","dependencies":{"@autodev/shared":"workspace:*","bullmq":"^5.46.0"},"scripts":{"test":"vitest run"}}
+{
+  "name": "@autodev/orchestrator",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@autodev/shared": "workspace:*",
+    "bullmq": "^5.46.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,1 +1,21 @@
-{"name":"@autodev/client-portal","version":"1.0.0","private":true,"type":"module","exports":{".":"./src/portal.tsx"},"dependencies":{"@autodev/ui":"workspace:*","react":"^19.1.0","lucide-react":"^0.468.0"},"devDependencies":{"@types/react":"^19.0.0"}}
+{
+  "name": "@autodev/client-portal",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/portal.tsx"
+  },
+  "dependencies": {
+    "@autodev/ui": "workspace:*",
+    "react": "^19.1.0",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}
