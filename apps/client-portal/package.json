@@ -8,8 +8,8 @@
   },
   "dependencies": {
     "@autodev/ui": "workspace:*",
-    "react": "^19.1.0",
-    "lucide-react": "^0.468.0"
+    "lucide-react": "^1.53.0",
+    "react": "^19.1.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
