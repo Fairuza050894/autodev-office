@@ -138,7 +138,36 @@ async function deploy(input) {
   if (!healthy) { await docker(['rm', '-f', name]); throw new Error('Deployment health check failed'); }
   await save(data.project_id, { current: name, previous: previous?.current === name ? previous.previous : previous?.current, version: data.version, setup_url });
   if (previous?.current && previous.current !== name) await docker(['stop', previous.current]);
+  await pruneSnapshots(data.project_id);
+  await pruneContainers(data.project_id);
   return { url: `${process.env.PUBLIC_LIVE_URL || 'http://127.0.0.1:4400'}/live/${data.project_id}/`, internal_url: `http://runner:4100/live/${data.project_id}/`, container_id: name, healthy, setup_url };
+}
+// Retensi snapshot: keep current + previous, hapus sisanya sesuai SNAPSHOT_RETENTION_DAYS.
+// ponytail: tanpa filter umur per-file (inode mtime tak andal di volume); tambah bila perlu.
+async function pruneSnapshots(project) {
+  idSchema.parse(project);
+  const dir = resolve(root, project, '.releases');
+  let names = [];
+  try { names = (await readdir(dir)).filter((n) => /^[a-f0-9]{12}$/.test(n)); } catch (e) { if (e.code === 'ENOENT') return; throw e; }
+  if (names.length <= 2) return;
+  const current = await state(project);
+  const keep = new Set([current?.current?.split('-').at(-1), current?.previous?.split('-').at(-1)].filter(Boolean));
+  for (const n of names) {
+    if (keep.has(n)) continue;
+    await rm(resolve(dir, n), { recursive: true, force: true });
+  }
+}
+// Retensi container: hapus container label autodev.project selain current+previous.
+async function pruneContainers(project) {
+  idSchema.parse(project);
+  const current = await state(project);
+  const keep = new Set([current?.current, current?.previous].filter(Boolean));
+  const list = await docker(['ps', '-a', '--filter', `label=autodev.project=${project}`, '--format', '{{.Names}}']);
+  if (list.exit_code !== 0) return;
+  for (const name of list.stdout.split('\n').map((s) => s.trim()).filter(Boolean)) {
+    if (keep.has(name)) continue;
+    await docker(['rm', '-f', name], 10000);
+  }
 }
 async function rollback(input) {
   const data = rollbackSchema.parse(input), current = await state(data.project_id);

@@ -393,7 +393,7 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
   }, [focusFloor, agents, byFloor]);
   if (!webgl) return <p className="muted">WebGL tidak tersedia di perangkat ini — gunakan denah 2D.</p>;
   return (
-    <div className="office3d" role="img" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail" style={{ height: 680 }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(220, Math.max(30, n.r + e.deltaY * 0.08)); }}>
+    <div className="office3d" role="region" aria-label="Kantor virtual 3D — geser untuk putar, scroll untuk zoom, klik agen untuk detail. Gunakan denah 2D untuk navigasi keyboard." style={{ height: 'clamp(380px, 60vh, 680px)' }} onPointerMove={e => { if (!dragging.current) return; const n = nav.current; n.moved += Math.abs(e.clientX - n.lx) + Math.abs(e.clientY - n.ly); n.theta -= (e.clientX - n.lx) * 0.005; n.phi = Math.min(1.25, Math.max(0.35, n.phi - (e.clientY - n.ly) * 0.004)); n.gp = n.phi; n.lx = e.clientX; n.ly = e.clientY; }} onPointerLeave={() => { dragging.current = false; }} onWheel={e => { const n = nav.current; n.r = n.gr = Math.min(220, Math.max(30, n.r + e.deltaY * 0.08)); }}>
       <Canvas shadows dpr={weak ? 1 : [1, 2]} camera={{ fov: 32, near: 0.1, far: 600 }} gl={{ antialias: true, alpha: true, powerPreference: 'high-performance', toneMappingExposure: 1.0 }} onPointerDown={e => { dragging.current = true; nav.current.moved = 0; nav.current.lx = e.clientX; nav.current.ly = e.clientY; }} onPointerUp={() => { dragging.current = false; }}>
         <color attach="background" args={[nightMode ? '#070b1d' : '#131a35']} />
         <fog attach="fog" args={[nightMode ? '#0b1028' : '#1a2145', 260, 700]} />
@@ -402,7 +402,7 @@ export default function Office3D({ agents, tasks, onSelect, focusFloor = -1, res
         <directionalLight position={[30, 58, 25]} intensity={nightMode ? 0.8 : 1.6} color={nightMode ? '#8ea2ff' : '#ffe7c2'} castShadow shadow-mapSize={[2048, 2048]} shadow-bias={-0.0004} shadow-normalBias={0.02} />
         <directionalLight position={[-28, 22, -30]} intensity={0.5} color="#7dd3fc" />
         <directionalLight position={[0, 14, 48]} intensity={0.5} color="#f0abfc" />
-        <Suspense fallback={null}>
+        <Suspense fallback={<Html center><div role="status" aria-label="Memuat kantor 3D">Memuat kantor 3D…</div></Html>}>
           <CityBackdrop />
           <mesh rotation-x={-Math.PI / 2} position-y={-1.3} receiveShadow><boxGeometry args={[84, 62]} /><meshStandardMaterial color="#232c52" roughness={0.9} /></mesh>
           <mesh rotation-x={-Math.PI / 2} position-y={-1.2} receiveShadow><boxGeometry args={[66, 46]} /><meshStandardMaterial color="#2e3a68" roughness={0.85} /></mesh>

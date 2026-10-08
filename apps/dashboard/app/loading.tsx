@@ -1,0 +1,1 @@
+export default function Loading() { return <main className="portal"><div className="bento" role="status" aria-label="Memuat konten">{Array.from({length:6},(_,i)=><div key={i} className="panel skeleton"/>)}</div></main>; }

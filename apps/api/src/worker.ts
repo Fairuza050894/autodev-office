@@ -1,6 +1,7 @@
 import { createOfficeEngine } from '@autodev/orchestrator';
 import { createRuntime } from '@autodev/agent-runtime';
 import { store,pool } from './store.js';
+import { reconcileStartup } from './reconcile.js';
 import { portalToken,decrypt } from './security.js';
 import { z } from 'zod';
 const client=await pool.connect();
@@ -18,5 +19,6 @@ const runtime=createRuntime({store,runnerUrl:process.env.RUNNER_URL??process.env
 const engine=createOfficeEngine({store,runtime,concurrency:Number(process.env.WORKER_CONCURRENCY??4)});
 async function heartbeat(){await pool.query("INSERT INTO settings(id,data) VALUES('worker',$1) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=now()",[JSON.stringify({status:'running',heartbeat_at:new Date().toISOString(),pid:process.pid})]);}
 await heartbeat();const timer=setInterval(()=>void heartbeat().catch(error=>console.error(JSON.stringify({level:'error',message:'worker heartbeat failed',error:String(error)}))),5000);
+try{const r=await reconcileStartup(store);console.log(JSON.stringify({level:'info',message:'startup reconciled',...r}));}catch(error){console.error(JSON.stringify({level:'error',message:'startup reconcile failed',error:String(error)}));}
 const stop=async()=>{clearInterval(timer);await engine.stop();await client.query('SELECT pg_advisory_unlock(42027)');client.release();await pool.end();process.exit(0);};process.on('SIGTERM',()=>void stop());process.on('SIGINT',()=>void stop());
 await engine.start();
