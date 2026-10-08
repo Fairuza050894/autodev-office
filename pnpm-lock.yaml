@@ -113,6 +113,9 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.3.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   apps/dashboard:
     dependencies:
@@ -183,6 +186,10 @@ importers:
       zod:
         specifier: ^3.24.2
         version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/agents:
     dependencies:
@@ -195,6 +202,10 @@ importers:
       zod:
         specifier: ^3.24.2
         version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/orchestrator:
     dependencies:
@@ -204,12 +215,20 @@ importers:
       bullmq:
         specifier: ^5.46.0
         version: 5.81.5
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/shared:
     dependencies:
       zod:
         specifier: ^3.24.2
         version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/tools:
     dependencies:
@@ -226,6 +245,9 @@ importers:
       '@types/nodemailer':
         specifier: ^6.4.17
         version: 6.4.24
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
   packages/ui:
     dependencies:
@@ -239,6 +261,9 @@ importers:
       '@types/react':
         specifier: ^19.0.0
         version: 19.3.0
+      typescript:
+        specifier: ^5.7.0
+        version: 5.9.3
 
 packages:
 
