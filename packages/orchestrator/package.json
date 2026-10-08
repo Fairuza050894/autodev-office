@@ -5,7 +5,7 @@
   "exports": "./src/index.ts",
   "dependencies": {
     "@autodev/shared": "workspace:*",
-    "bullmq": "^5.46.0"
+    "bullmq": "^6.3.11"
   },
   "scripts": {
     "test": "vitest run",
