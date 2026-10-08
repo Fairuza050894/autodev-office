@@ -15,7 +15,7 @@ DNS domain pengirim sebelum produksi:
 3. **DMARC:** TXT `_dmarc.domain` dengan alignment SPF/DKIM. Mulai `p=none` dan alamat agregasi milik operator, setelah observasi naikkan quarantine/reject.
 4. SMTP TLS, domain MAIL FROM/Return-Path, bounce, suppression list, unsubscribe status non-esensial harus ditangani provider/operator.
 
-`sent` berarti provider menerima pesan. `delivered` hanya dari bukti event provider, bukan UI mengasumsikan inbox. SMTP Message-ID bukan deduplikasi universal. Event webhook harus diverifikasi dengan credential/signature provider; tidak boleh mengubah DELIVERED atas payload tidak autentik. Handover/download portal memakai token terbatas waktu; jangan mempublikasikan bucket. Jangan menaruh password klien dalam email; gunakan reset/password bootstrap melalui saluran aman.
+`sent` berarti provider menerima pesan. `delivered` hanya dari bukti event provider, bukan UI mengasumsikan inbox. SMTP Message-ID bukan deduplikasi universal. Event webhook harus diverifikasi dengan credential/signature provider; tidak boleh mengubah DELIVERED atas payload tidak autentik. Endpoint `POST /api/v1/webhooks/email` memakai `EMAIL_WEBHOOK_SECRET` via header `x-webhook-secret` (constant-time compare); tanpa secret → 503 disabled. Handover/download portal memakai token terbatas waktu; jangan mempublikasikan bucket. Jangan menaruh password klien dalam email; gunakan reset/password bootstrap melalui saluran aman.
 
 ## Git
 
