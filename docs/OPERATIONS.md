@@ -16,7 +16,7 @@ Gunakan `docker compose ps` dan `docker compose logs --tail=100 init gitea-init 
 
 ## Recovery
 
-`docker compose stop worker`, lalu `docker compose start worker` melanjutkan state durable. Gunakan halaman task/DLQ untuk kegagalan permanen; jangan mengubah status langsung menjadi DONE/DELIVERED. Email SMTP bisa memiliki keadaan ambigu setelah crash pada saat server menerima pesan: rekonsiliasi dengan provider/Mailpit sebelum mengirim ulang; SMTP tidak menyediakan exactly-once delivery universal.
+`docker compose stop worker`, lalu `docker compose start worker` melanjutkan state durable. Saat startup worker menjalankan `reconcileStartup`: reservasi budget stale dilepas (event `budget.reconciled`), email `sending` ditandai ambigu (event `email.ambiguous`, tanpa auto-resend). Gunakan halaman task/DLQ (`/dead_letters`) untuk kegagalan permanen; jangan mengubah status langsung menjadi DONE/DELIVERED. Email SMTP bisa memiliki keadaan ambigu setelah crash pada saat server menerima pesan: rekonsiliasi dengan provider/Mailpit sebelum mengirim ulang; SMTP tidak menyediakan exactly-once delivery universal.
 
 Mengubah Settings tidak otomatis mengganti environment worker. Perbarui `.env` yang sesuai dan jalankan `docker compose up -d --force-recreate worker api`; provider/settings yang hanya berlaku saat startup memerlukan restart.
 
@@ -30,7 +30,7 @@ Broker `/deploy` menyalin snapshot immutable source, menjalankan node server.mjs
 
 Rollback melalui dashboard/API menjalankan kembali container sebelumnya dan mengecek health sebelum penggantian pointer. Ini rollback aplikasi stateless, bukan reverse migration DB atau rollback pembayaran eksternal. Snapshot/container menghabiskan disk; operator menentukan retensi setelah delivery/garansi.
 
-Container hasil project bukan service Compose. Inventarisasi dengan `docker ps -a --filter label=autodev.project`. Hapus hanya container project yang retensinya berakhir setelah backup; jangan memakai prune global pada host bersama. `docker compose down` tidak menghentikan container tersebut. Volume tidak dihapus otomatis. Penghapusan data klien harus meliputi DB, workspace, snapshot, repository, object storage, email, backup sesuai kebijakan retensi.
+Container hasil project bukan service Compose. Inventarisasi dengan `docker ps -a --filter label=autodev.project`. Setiap deploy otomatis menjalankan `pruneSnapshots` + `pruneContainers`: snapshot `.releases/` dan container label `autodev.project` selain current+previous dihapus. Hapus hanya container project yang retensinya berakhir setelah backup; jangan memakai prune global pada host bersama. `docker compose down` tidak menghentikan container tersebut. Volume tidak dihapus otomatis. Penghapusan data klien harus meliputi DB, workspace, snapshot, repository, object storage, email, backup sesuai kebijakan retensi (`SNAPSHOT_RETENTION_DAYS`, default 30).
 
 ## Demonstrasi
 
