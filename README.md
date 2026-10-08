@@ -45,6 +45,17 @@ Jangan gunakan `down -v` kecuali bermaksud menghapus seluruh DB, artifact, repos
 
 Mock menghasilkan proyek template deterministik. QRIS/pembayaran nyata memerlukan provider, kredensial merchant, dan validasi callback; jangan menganggap halaman demo sebagai pemrosesan pembayaran. Status SMTP `sent` berarti diterima server SMTP, **bukan bukti masuk inbox publik**; Mailpit tidak mengirim ke internet.
 
+## Fitur terbaru (v1.0.0-main)
+
+- **Global error boundary** (`app/global-error.tsx`): halaman error root layout tanpa crash, tombol "Muat ulang kantor".
+- **DLQ endpoint & UI** (`/dead_letters`, nav Inbox): `GET /api/v1/dead_letters` + tampil task_id/project_id/reason, larangan ubah langsung jadi DONE.
+- **Health check view** (`/health`): status layanan (api/database/redis/runner/git/smtp/storage/worker), detail worker heartbeat + PID.
+- **Reconcile startup**: worker startup melepaskan budget stale (`budget.reconciled`), menandai email `sending` ambigu (`email.ambiguous`) tanpa auto-resend.
+- **Pruning otomatis**: tiap deploy menjalankan `pruneSnapshots` + `pruneContainers` (label `autodev.project`), retensi `SNAPSHOT_RETENTION_DAYS` (default 30).
+- **Webhook email**: `POST /api/v1/webhooks/email` dengan header `x-webhook-secret` (constant-time compare), tanpa secret → 503 disabled.
+- **Major deps**: Next.js 16 (Turbopack fix: @import Google Fonts → next/font, CSS double-dot fix), framer-motion 14, recharts 3, zod 4, bullmq 6, nodemailer 10, ioredis 6, fastify 11, ESLint 10, vitest 5, @types/node 26, lucide-react 1, TypeScript 6.x (compat typescript-eslint 8).
+- **Client-portal lucide**: sinkron v1.53.0 (ArrowUpRight, Download, Check, Star, Sun, Moon).
+
 ## Dashboard dan portal
 
 Mulai intake pada `/new-project` atau widget chat. Halaman proyek menyediakan tab Timeline, DAG, Kanban, Gantt, Percakapan, Requirements, Artefak, Environments, Biaya, Email, dan Logs. `Cmd/Ctrl+K` membuka pencarian; pilihan tema gelap/terang disimpan pada browser. Controls mengikuti role; Kanban hanya mengubah status penjadwalan, bukan memalsukan status QA atau DONE.
@@ -81,6 +92,8 @@ Seluruh nilai dan default tersedia di `.env.example`. Compose memasang URL inter
 ## Pengembangan dan ekstensi
 
 Node 22, pnpm 10.30.3. Instal dependensi dengan `pnpm install`. Script API: `pnpm --filter @autodev/api dev`, `worker`, `migrate`, `seed`. Stack container disarankan; DB/Redis tidak dipublikasikan ke host, sehingga mode host memerlukan Compose override lokal untuk port tersebut.
+
+**Stack utama**: Next.js 16 (webpack fallback), React 19, TypeScript 6.x, framer-motion 14, recharts 3, @xyflow/react 12, lucide-react 1, zod 4, fastify 5 (@fastify/cors/rate-limit/swagger-ui 11), bullmq 6, ioredis 6, nodemailer 10, ESLint 10 (typescript-eslint 8), vitest 5, turbo 2.11, playwright 1.64.
 
 Agen baru: ikuti definisi agen/prompt dan schema yang sudah ada di `packages/agents`; tambahkan stage/task assignment di runtime, izin tool sesuai role, DoD dan validator, lalu test schema/handoff serta retry. Jangan membuat stage sukses hanya berdasarkan teks LLM. Tool baru: registrasikan schema input/output di registry `packages/tools`, allowlist agen, validasi trust boundary, jalankan kode tidak tepercaya melalui runner; jangan menambahkan shell host atau Docker socket ke API/worker. Lihat [kontrak broker](docs/SANDBOX.md).
 
