@@ -59,60 +59,68 @@ function torsoGeo() {
     .map(([x, y]) => new THREE.Vector2(x, y));
   return xform(new THREE.LatheGeometry(pts, 14), 0, 1.10, 0);
 }
-function headGeo() { return xform(new THREE.SphereGeometry(0.38, 20, 16), 0, 2.06, 0); } // chibi: kepala ~1/3 badan
+function headGeo() { return xform(new THREE.SphereGeometry(0.47, 20, 16), 0, 2.10, 0); } // fortnite-chibi: kepala besar ~40% badan
 function hairGeo(style, color) {
   void color;
   if (style === 1) { // sanggul
-    const a = xform(new THREE.SphereGeometry(0.395, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02);
-    const b = xform(new THREE.SphereGeometry(0.13, 10, 8), 0, 2.36, -0.18);
+    const a = xform(new THREE.SphereGeometry(0.485, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.10, -0.02);
+    const b = xform(new THREE.SphereGeometry(0.16, 10, 8), 0, 2.46, -0.20);
     return [a, b];
   }
   if (style === 2) { // spike
-    const parts = [xform(new THREE.SphereGeometry(0.395, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), 0, 2.06, -0.02)];
+    const parts = [xform(new THREE.SphereGeometry(0.485, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), 0, 2.10, -0.02)];
     for (let i = 0; i < 5; i++) {
-      const c = new THREE.ConeGeometry(0.07, 0.22, 7);
+      const c = new THREE.ConeGeometry(0.085, 0.27, 7);
       const a = (i / 5) * Math.PI * 2;
-      parts.push(xform(c, Math.cos(a) * 0.20, 2.30, Math.sin(a) * 0.20, 1, 1, 1, Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5));
+      parts.push(xform(c, Math.cos(a) * 0.24, 2.40, Math.sin(a) * 0.24, 1, 1, 1, Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5));
     }
     return parts;
   }
   if (style === 3) { // panjang
-    const pts = [new THREE.Vector2(0.32, 0), new THREE.Vector2(0.34, -0.25), new THREE.Vector2(0.30, -0.5)]
+    const pts = [new THREE.Vector2(0.38, 0), new THREE.Vector2(0.40, -0.28), new THREE.Vector2(0.35, -0.55)]
       .map(p => p);
-    return [xform(new THREE.SphereGeometry(0.395, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02),
-      xform(new THREE.LatheGeometry(pts, 12, Math.PI * 0.6, Math.PI * 1.8), 0, 2.10, -0.05)];
+    return [xform(new THREE.SphereGeometry(0.485, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.10, -0.02),
+      xform(new THREE.LatheGeometry(pts, 12, Math.PI * 0.6, Math.PI * 1.8), 0, 2.14, -0.05)];
   }
-  return [xform(new THREE.SphereGeometry(0.395, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.06, -0.02)]; // cepak
+  if (style === 4) { // mohawk ala fortnite
+    const parts = [xform(new THREE.SphereGeometry(0.485, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), 0, 2.10, -0.02)];
+    for (let i = 0; i < 6; i++) {
+      const c = new THREE.ConeGeometry(0.09, 0.30, 6);
+      parts.push(xform(c, 0, 2.42 + Math.sin((i / 5) * Math.PI) * 0.06, -0.30 + (i / 5) * 0.60, 1, 1, 1, -0.15 + (i / 5) * 0.3, 0, 0));
+    }
+    return parts;
+  }
+  return [xform(new THREE.SphereGeometry(0.485, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.10, -0.02)]; // cepak
 }
 // Props peran (objek, bukan badan): bentuk sederhana, di-bind ke tulang terkait.
 function accessoryGeo(kind) {
   const P = [];
   const put = (g, j) => P.push({ g, j });
   if (kind.includes('headset')) {
-    put(xform(new THREE.TorusGeometry(0.31, 0.04, 8, 16, Math.PI), 0, 2.06, 0), 'Head');
-    put(xform(new THREE.CylinderGeometry(0.08, 0.08, 0.07, 10), -0.30, 2.02, 0, 1, 1, 1, 0, 0, Math.PI / 2), 'Head');
-    put(xform(new THREE.CylinderGeometry(0.08, 0.08, 0.07, 10), 0.30, 2.02, 0, 1, 1, 1, 0, 0, Math.PI / 2), 'Head');
+    put(xform(new THREE.TorusGeometry(0.39, 0.05, 8, 16, Math.PI), 0, 2.10, 0), 'Head');
+    put(xform(new THREE.CylinderGeometry(0.10, 0.10, 0.08, 10), -0.37, 2.06, 0, 1, 1, 1, 0, 0, Math.PI / 2), 'Head');
+    put(xform(new THREE.CylinderGeometry(0.10, 0.10, 0.08, 10), 0.37, 2.06, 0, 1, 1, 1, 0, 0, Math.PI / 2), 'Head');
   }
   if (kind.includes('helm')) {
-    put(xform(new THREE.SphereGeometry(0.35, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.08, 0), 'Head');
-    put(xform(new THREE.BoxGeometry(0.40, 0.10, 0.06), 0, 2.02, 0.28), 'Head');
+    put(xform(new THREE.SphereGeometry(0.44, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), 0, 2.12, 0), 'Head');
+    put(xform(new THREE.BoxGeometry(0.48, 0.12, 0.06), 0, 2.06, 0.36), 'Head');
   }
   if (kind.includes('topi-proyek')) {
-    put(xform(new THREE.CylinderGeometry(0.28, 0.32, 0.20, 14), 0, 2.34, 0), 'Head');
-    put(xform(new THREE.CylinderGeometry(0.40, 0.40, 0.05, 14), 0, 2.24, 0), 'Head');
+    put(xform(new THREE.CylinderGeometry(0.33, 0.38, 0.24, 14), 0, 2.50, 0), 'Head');
+    put(xform(new THREE.CylinderGeometry(0.48, 0.48, 0.06, 14), 0, 2.38, 0), 'Head');
   }
   if (kind.includes('topi-datar')) {
-    put(xform(new THREE.CylinderGeometry(0.30, 0.30, 0.10, 14), 0, 2.36, 0), 'Head');
-    put(xform(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 14), 0, 2.31, 0), 'Head');
+    put(xform(new THREE.CylinderGeometry(0.36, 0.36, 0.12, 14), 0, 2.52, 0), 'Head');
+    put(xform(new THREE.CylinderGeometry(0.50, 0.50, 0.04, 14), 0, 2.46, 0), 'Head');
   }
   if (kind.includes('baret')) {
-    put(xform(new THREE.CylinderGeometry(0.33, 0.29, 0.11, 14), 0.06, 2.38, 0, 1, 1, 1, 0, 0, -0.18), 'Head');
+    put(xform(new THREE.CylinderGeometry(0.40, 0.35, 0.13, 14), 0.07, 2.54, 0, 1, 1, 1, 0, 0, -0.18), 'Head');
   }
   if (kind.includes('kacamata-bulat')) {
-    for (const sx of [-0.12, 0.12]) put(xform(new THREE.TorusGeometry(0.085, 0.018, 6, 14), sx, 2.04, 0.26), 'Head');
+    for (const sx of [-0.15, 0.15]) put(xform(new THREE.TorusGeometry(0.10, 0.022, 6, 14), sx, 2.08, 0.38), 'Head');
   }
   if (kind.includes('kacamata') && !kind.includes('bulat')) {
-    for (const sx of [-0.12, 0.12]) put(xform(new THREE.BoxGeometry(0.15, 0.09, 0.04), sx, 2.04, 0.26), 'Head');
+    for (const sx of [-0.15, 0.15]) put(xform(new THREE.BoxGeometry(0.18, 0.11, 0.04), sx, 2.08, 0.38), 'Head');
   }
   if (kind.includes('laptop')) {
     put(xform(new THREE.BoxGeometry(0.42, 0.04, 0.30), 0.44, 1.02, 0.30), 'ForeArmR');
@@ -156,28 +164,36 @@ export function buildCharacter(spec) {
   const hairC = HAIRS[(spec.i + 1) % HAIRS.length];
   const outfit = '#' + new THREE.Color(spec.color).offsetHSL(0, 0, ((spec.i % 3) - 1) * 0.05).getHexString();
   const light = '#' + new THREE.Color(spec.color).offsetHSL(0, -0.05, 0.22).getHexString();
+  // Warna sekunder kontras ala skin fortnite (komplementer, tetap dalam palet peran)
+  const accent2 = '#' + new THREE.Color(spec.color).offsetHSL(0.13 * (spec.i % 2 ? 1 : -1), 0.10, -0.12).getHexString();
   const dark = '#232c52';
   const parts = [];
-  parts.push(part(xform(new THREE.SphereGeometry(0.30, 12, 10), 0, 1.02, 0, 1.05, 0.75, 0.85), dark, 'Hips'));
+  parts.push(part(xform(new THREE.SphereGeometry(0.34, 12, 10), 0, 1.02, 0, 1.05, 0.75, 0.85), dark, 'Hips'));
   parts.push(part(torsoGeo(), outfit, 'Spine'));
-  parts.push(part(xform(new THREE.BoxGeometry(0.001, 0.001, 0.001), 0, -10, 0), dark, 'Hips')); // no-op, menjaga grup
-  parts.pop();
+  // Rompi taktis dua-warna (khas skin fortnite): panel dada kontras
+  parts.push(part(xform(new THREE.CylinderGeometry(0.335, 0.31, 0.30, 12, 1, true), 0, 1.45, 0), accent2, 'Spine'));
   parts.push(part(headGeo(), skin, 'Head'));
-  for (const g of hairGeo(spec.i % 4)) parts.push(part(g, hairC, 'Head'));
-  for (const sx of [-0.13, 0.13]) parts.push(part(xform(new THREE.SphereGeometry(0.05, 8, 8), sx, 2.10, 0.335), '#141a33', 'Head'));
-  parts.push(part(xform(new THREE.TorusGeometry(0.10, 0.022, 6, 12, Math.PI), 0, 1.96, 0.335, 1, 1, 1, 0, 0, Math.PI), '#141a33', 'Head')); // senyum
+  for (const g of hairGeo(spec.i % 5)) parts.push(part(g, hairC, 'Head'));
+  // Mata besar ekspresif + alis tegas
+  for (const sx of [-0.16, 0.16]) parts.push(part(xform(new THREE.SphereGeometry(0.068, 8, 8), sx, 2.14, 0.415), '#141a33', 'Head'));
+  for (const sx of [-0.16, 0.16]) parts.push(part(xform(new THREE.SphereGeometry(0.022, 6, 6), sx + 0.02, 2.16, 0.465), '#ffffff', 'Head'));
+  for (const sx of [-0.16, 0.16]) parts.push(part(xform(new THREE.BoxGeometry(0.16, 0.045, 0.03), sx, 2.30, 0.40, 1, 1, 1, 0, 0, sx > 0 ? 0.18 : -0.18), hairC, 'Head'));
+  parts.push(part(xform(new THREE.TorusGeometry(0.13, 0.028, 6, 12, Math.PI), 0, 2.00, 0.415, 1, 1, 1, 0, 0, Math.PI), '#141a33', 'Head')); // senyum
   // Lencana peran di dada
   parts.push(part(xform(new THREE.CircleGeometry(0.07, 12), 0.17, 1.55, 0.315), spec.busy ? '#22c55e' : '#94a3b8', 'Spine'));
+  // Back-bling untuk semua (ciri khas fortnite): ransel + kantong, warna sekunder
+  parts.push(part(xform(new THREE.BoxGeometry(0.40, 0.50, 0.18), 0, 1.45, -0.36), accent2, 'Spine'));
+  parts.push(part(xform(new THREE.BoxGeometry(0.26, 0.22, 0.08), 0, 1.38, -0.48), light, 'Spine'));
   for (const s of [-1, 1]) {
     const UA = s < 0 ? 'UpperArmL' : 'UpperArmR', FA = s < 0 ? 'ForeArmL' : 'ForeArmR';
-    parts.push(part(xform(new THREE.CapsuleGeometry(0.11, 0.28, 3, 10), s * 0.42, 1.52, 0), outfit, UA));
-    parts.push(part(xform(new THREE.SphereGeometry(0.12, 10, 8), s * 0.42, 1.73, 0), outfit, UA));
-    parts.push(part(xform(new THREE.CapsuleGeometry(0.085, 0.26, 3, 10), s * 0.44, 1.10, 0), skin, FA));
-    parts.push(part(xform(new THREE.SphereGeometry(0.10, 10, 8), s * 0.44, 0.90, 0), skin, FA));
+    parts.push(part(xform(new THREE.CapsuleGeometry(0.145, 0.26, 3, 10), s * 0.44, 1.52, 0), outfit, UA));
+    parts.push(part(xform(new THREE.SphereGeometry(0.155, 10, 8), s * 0.44, 1.73, 0), accent2, UA)); // pelindung bahu
+    parts.push(part(xform(new THREE.CapsuleGeometry(0.11, 0.24, 3, 10), s * 0.46, 1.10, 0), skin, FA));
+    parts.push(part(xform(new THREE.SphereGeometry(0.12, 10, 8), s * 0.46, 0.90, 0), skin, FA));
     const TH = s < 0 ? 'ThighL' : 'ThighR', SH = s < 0 ? 'ShinL' : 'ShinR';
-    parts.push(part(xform(new THREE.CapsuleGeometry(0.12, 0.26, 3, 10), s * 0.16, 0.80, 0), dark, TH));
-    parts.push(part(xform(new THREE.CapsuleGeometry(0.085, 0.26, 3, 10), s * 0.16, 0.40, 0), '#3b4670', SH));
-    parts.push(part(xform(new THREE.SphereGeometry(0.13, 10, 8), s * 0.16, 0.10, 0.05, 1, 0.65, 1.5), '#141a33', SH));
+    parts.push(part(xform(new THREE.CapsuleGeometry(0.15, 0.24, 3, 10), s * 0.17, 0.80, 0), dark, TH));
+    parts.push(part(xform(new THREE.CapsuleGeometry(0.11, 0.24, 3, 10), s * 0.17, 0.40, 0), '#3b4670', SH));
+    parts.push(part(xform(new THREE.SphereGeometry(0.17, 10, 8), s * 0.17, 0.10, 0.06, 1, 0.70, 1.6), accent2, SH)); // sneakers chunky
   }
   for (const { g, j } of accessoryGeo(spec.accessory))
     parts.push(part(g, light, j));

@@ -8,7 +8,8 @@ Wajib `.glb` rig humanoid di `apps/dashboard/public/assets/characters/{agent_id}
 `node scripts/gen-chars/generate.mjs` — build 19 `.glb` rig humanoid lokal:
 `scripts/gen-chars/builder.js` (SkinnedMesh + 11 bones + 8 klip) → `GLTFExporter`
 → validasi reload `GLTFLoader` (skeleton + semua klip playable) → `public/assets/characters/`.
-Lisensi: karya sendiri untuk repo ini — bebas komersial. Hasil: ~14MB, 3.4–3.8k poly/file (<40k).
+Lisensi: karya sendiri untuk repo ini — bebas komersial. Hasil: ~15.8MB, 3.8–4.3k poly/file (<40k).
+Gaya: fortnite-chibi — kepala besar, badan chunky, outfit dua-warna, back-bling, sneakers besar.
 Regenerasi tiap ubah builder: `node scripts/gen-chars/generate.mjs`, lalu rebuild dashboard.
 
 ## Opsi sumber (pilih satu per batch)
