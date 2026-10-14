@@ -12,10 +12,7 @@
     "test:e2e": "playwright test",
     "test:e2e:prod": "E2E_BASE_URL=https://autodev-office-fairuzareztu-3191s-projects.vercel.app playwright test",
     "lint": "eslint .",
-    "seed": "tsx scripts/seed.ts"
-  },
-  "dependencies": {
-    "zod": "^4.6.5"
+    "seed": "tsx apps/api/src/seed.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",

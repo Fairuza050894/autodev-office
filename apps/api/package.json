@@ -1,1 +1,36 @@
-{"name":"@autodev/api","version":"1.0.0","private":true,"type":"module","scripts":{"dev":"tsx watch src/server.ts","start":"tsx src/server.ts","worker":"tsx src/worker.ts","migrate":"tsx src/migrate.ts","seed":"tsx src/seed.ts","typecheck":"tsc --noEmit"},"dependencies":{"@autodev/agent-runtime":"workspace:*","@autodev/agents":"workspace:*","@autodev/orchestrator":"workspace:*","@autodev/shared":"workspace:*","@autodev/tools":"workspace:*","@fastify/cookie":"^11.0.2","@fastify/cors":"^11.3.0","@fastify/rate-limit":"^11.2.0","@fastify/swagger":"^9.4.0","@fastify/swagger-ui":"^6.1.1","fastify":"^5.2.1","ioredis":"^6.0.0","pg":"^8.13.3","tsx":"^4.19.3","zod":"^3.24.2"},"devDependencies":{"@types/node":"^22.13.4","@types/pg":"^8.11.11","typescript":"^5.7.3"}}
+{
+  "name": "@autodev/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "worker": "tsx src/worker.ts",
+    "migrate": "tsx src/migrate.ts",
+    "seed": "tsx src/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@autodev/agent-runtime": "workspace:*",
+    "@autodev/agents": "workspace:*",
+    "@autodev/orchestrator": "workspace:*",
+    "@autodev/shared": "workspace:*",
+    "@autodev/tools": "workspace:*",
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.2.0",
+    "@fastify/swagger": "^9.4.0",
+    "@fastify/swagger-ui": "^6.1.1",
+    "fastify": "^5.2.1",
+    "ioredis": "^6.0.0",
+    "pg": "^8.13.3",
+    "tsx": "^4.19.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/pg": "^8.11.11",
+    "typescript": "^5.7.3"
+  }
+}
